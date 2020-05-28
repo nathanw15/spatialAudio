@@ -56,7 +56,7 @@ SearchPaths searchpaths;
 
 vector<string> files;
 vector<string> posUpdateNames{"off", "trajectory", "moving","Sine"};
-vector<string> panningMethodNames{"VBAP","SpeakerSkirt","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
+vector<string> panningMethodNames{"LBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
 
@@ -68,7 +68,7 @@ ParameterMenu setAllSoundFileIdx("setAllSoundFileIdx","",0,"");
 ParameterBool setAllEnabled("setAllEnabled","",0.0);
 ParameterMenu setAllPanMethod("setAllPanMethod","",0,"");
 Parameter setAllAzimuth("setAllAzimuth","",2.9,"",-1.0*M_PI,M_PI);
-Parameter azimuthSpread("azimuthSpread","",0.f,"",0.0,2.0*M_PI);
+Parameter setAllAzimuthOffsetScale("setAllAzimuthOffsetScale","",0.f,"",-1.0,1.0);
 ParameterBool setAllRatesToOne("setAllRatesToOne","",0.0);
 Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,44100.0);
 Parameter setAllDurations("setAllDurations","",0.0,"",0.0,10.f);
@@ -203,12 +203,12 @@ public:
     Parameter posOscAmp{"posOscAmp","",1.0,"",0.0,M_PI};
 
     Parameter centerAzi{"centerAzi","",0.0,"",-1.0*M_PI,M_PI};// = 0.0;
-    Parameter aziOffset{"aziOffset","",0.0,"",-1.0,1.0};
-    Parameter aziOffsetScale{"aziOffsetScale","",0.0,"",-1.0*M_PI,M_PI};
+    Parameter aziOffset{"aziOffset","",0.0,"",-1.0*M_PI,M_PI};
+    Parameter aziOffsetScale{"aziOffsetScale","",0.0,"",-1.0,1.0};
 
     Parameter centerEle{"centerEle","",0.0,"",-1.0*M_PI_2,M_PI_2};// = 0.0;
-    Parameter eleOffset{"eleOffset","",0.0,"",-1.0,1.0};
-    Parameter eleOffsetScale{"eleOffsetScale","",0.0,"",-1.0*M_PI,M_PI};
+    Parameter eleOffset{"eleOffset","",0.0,"",-1.0*M_PI,M_PI};
+    Parameter eleOffsetScale{"eleOffsetScale","",0.0,"",-1.0,1.0};
 
     Ramp sourceRamp;
 
@@ -247,15 +247,25 @@ public:
     ParameterBool scaleSrcWidth{"scaleSrcWidth","",0};
 
     Parameter soundFileStartPhase{"soundFileStartPhase","",0.0,"",0.0,1.0};
-    Parameter soundFilePeriod{"soundFilePeriod","",1.0,"",0.0,1.0};
+    Parameter soundFileDuration{"soundFileDuration","",1.0,"",0.0,1.0};
 
     VirtualSource(){
 
 
         sourceWidth.displayName("Source Spread");
 
-        aziOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
-        eleOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
+        centerAzi.displayName("Azimuth");
+        aziOffset.displayName("Azi. Offset");
+        aziOffsetScale.displayName("Azi. Offset Scale");
+
+        centerEle.displayName("Elevation");
+        eleOffset.displayName("Elev. Offset");
+        eleOffsetScale.displayName("Elev. Offset Scale");
+
+//        aziOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
+//        eleOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
+        aziOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
+        eleOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
 
         angularFreq.set(angFreqCycles.get()*M_2PI);
         osc.freq(oscFreq.get());
@@ -272,17 +282,17 @@ public:
         samplePlayer.load("src/sounds/count.wav");
         samplePlayerRate.set(1.0 + (.002 * vsBundle.bundleIndex()));
         samplePlayer.rate(1.0);
-        soundFilePeriod.max(samplePlayer.period());
+        soundFileDuration.max(samplePlayer.period());
 
         sourceRamp.rampStartAzimuth = rampStartAzimuth.get();
         sourceRamp.rampEndAzimuth = rampEndAzimuth.get();
         sourceRamp.rampDuration = rampDuration.get();
 
         soundFileStartPhase.registerChangeCallback([&](float val){
-            samplePlayer.range(val,soundFilePeriod);
+            samplePlayer.range(val,soundFileDuration);
         });
 
-        soundFilePeriod.registerChangeCallback([&](float val){
+        soundFileDuration.registerChangeCallback([&](float val){
             samplePlayer.range(soundFileStartPhase,val);
         });
 
@@ -363,7 +373,7 @@ public:
 
         fileMenu.registerChangeCallback([&](float val){
             samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
-            soundFilePeriod.max(samplePlayer.period());
+            soundFileDuration.max(samplePlayer.period());
 //            bool didLoad = samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
 //            if(didLoad){
 //                cout << "Did Load " << samplePlayer.period()  << endl;
@@ -390,7 +400,7 @@ public:
         });
 
 //        vsBundle << enabled << sourceGain << aziInRad << positionUpdate << fileMenu << samplePlayerRate << triggerRamp << sourceRamp.rampStartAzimuth << sourceRamp.rampEndAzimuth << sourceRamp.rampDuration << angularFreq;
-        vsBundle << enabled << mute << decorrelateSrc << invert << panMethod << positionUpdate << sourceSound <<  fileMenu  << soundFileStartPhase << soundFilePeriod << sourceGain << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale   << samplePlayerRate  << angularFreq << angFreqCycles << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
+        vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
         //srcPresets << vsBundle;
     }
 
@@ -675,7 +685,7 @@ public:
 
         parameterGUI << soundOn << masterGain << stereoOutput << resetSamples << resetPosOscPhase << sampleWise  << combineAllChannels << xFadeCh1_2 << xFadeValue << sourcesToDecorrelate << decorrelationMethod << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev << speakerDensity << drawLabels;
         //parameterGUI << srcPresets;
-        xsetAllBundle << setAllEnabled << setAllDecorrelate << setAllPanMethod << setAllPosUpdate << setAllSoundFileIdx <<setAllAzimuth << azimuthSpread << setAllRatesToOne << setPlayerPhase << triggerAllRamps << setAllStartAzi << setAllEndAzi << setAllDurations << setPiano << setMidiPiano;
+        xsetAllBundle << setAllEnabled << setAllDecorrelate << setAllPanMethod << setAllPosUpdate << setAllSoundFileIdx <<setAllAzimuth << setAllAzimuthOffsetScale << setAllRatesToOne << setPlayerPhase << triggerAllRamps << setAllStartAzi << setAllEndAzi << setAllDurations << setPiano << setMidiPiano;
         parameterGUI << xsetAllBundle;
 
         for(int i = 0; i < NUM_SOURCES; i++){
@@ -687,7 +697,7 @@ public:
 
         parameterServer() << soundOn << resetSamples << resetPosOscPhase << sampleWise << useDelay << masterGain << maxDelay << xsetAllBundle << setMorphTime << recallPreset << combineAllChannels << setAllDecorrelate << decorrelationMethod << speakerDensity << drawLabels << xFadeCh1_2 << xFadeValue << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
 
-        htmlServer << parameterServer();
+        //htmlServer << parameterServer();
 
         sampleWise.setHint("hide", 1.0);
         combineAllChannels.setHint("hide", 1.0);
@@ -789,24 +799,33 @@ public:
 
         setAllRatesToOne.set(1.0);
 
-        azimuthSpread.registerChangeCallback([&](float val){
-            azimuthSpread.setNoCalls(val);
-            setAllAzimuth.set(setAllAzimuth.get());
+        setAllAzimuthOffsetScale.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->aziOffsetScale.set(val);
+            }
         });
 
+//        setAllAzimuth.registerChangeCallback([&](float val){
+//            if(sources.size() > 1){
+//                float aziInc = azimuthSpread.get()/(sources.size()-1);
+//                float startAzi = val - (azimuthSpread.get()/2.0);
+//                for(VirtualSource *v: sources){
+//                    int idx = v->vsBundle.bundleIndex();
+//                    float newAzi = startAzi + (aziInc*idx);
+//                    wrapValues(newAzi);
+//                    v->aziInRad.set(newAzi);
+//                }
+//            }else{
+//                VirtualSource *v = sources[0];
+//                v->aziInRad.set(val);
+//            }
+//        });
         setAllAzimuth.registerChangeCallback([&](float val){
-            if(sources.size() > 1){
-                float aziInc = azimuthSpread.get()/(sources.size()-1);
-                float startAzi = val - (azimuthSpread.get()/2.0);
-                for(VirtualSource *v: sources){
-                    int idx = v->vsBundle.bundleIndex();
-                    float newAzi = startAzi + (aziInc*idx);
-                    wrapValues(newAzi);
-                    v->aziInRad.set(newAzi);
-                }
-            }else{
-                VirtualSource *v = sources[0];
-                v->aziInRad.set(val);
+            for(VirtualSource *v: sources){
+                float newAzi = val;
+                wrapValues(newAzi);
+                v->aziInRad.set(newAzi);
+                v->centerAzi.set(newAzi);
             }
         });
 
