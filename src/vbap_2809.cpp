@@ -2,31 +2,30 @@
 #define GAMMA_H_NO_IO           // define this to avoid bringing AudioIO from Gamma
 
 #include "Gamma/Gamma.h"
+#include "Gamma/SamplePlayer.h"
+#include "Gamma/Noise.h"
+
 #include "al/app/al_App.hpp"
-//#include "al/app/al_AudioApp.hpp"
 #include "al/graphics/al_Graphics.hpp"
 #include "al/graphics/al_Shapes.hpp"
 #include "al/sound/al_Speaker.hpp"
+#include "al/sphere/al_AlloSphereSpeakerLayout.hpp"
+#include "al/graphics/al_Font.hpp"
 #include "al/ui/al_Parameter.hpp"
 #include "al/ui/al_ParameterServer.hpp"
-#include "Gamma/SamplePlayer.h"
-#include "Gamma/Noise.h"
 #include "al/ui/al_ControlGUI.hpp"
 #include "al/ui/al_HtmlInterfaceServer.hpp"
 
 #include "al_ext/spatialaudio/al_Decorrelation.hpp"
 
-#include "al/sphere/al_AlloSphereSpeakerLayout.hpp"
-
-#include "al/graphics/al_Font.hpp"
 
 #include <atomic>
 #include <vector>
 
 #define SAMPLE_RATE 44100
-//#define BLOCK_SIZE (2048)
+//#define BLOCK_SIZE 2048
 // 1024 block size seems to fix issue where it sounded like samples were being dropped.
-#define BLOCK_SIZE (1024)
+#define BLOCK_SIZE 1024
 #define MAX_DELAY 44100
 //#define IR_LENGTH 2048
 #define IR_LENGTH 2048
@@ -69,7 +68,7 @@ ParameterBool setAllEnabled("setAllEnabled","",0.0);
 ParameterMenu setAllPanMethod("setAllPanMethod","",0,"");
 Parameter setAllAzimuth("setAllAzimuth","",2.9,"",-1.0*M_PI,M_PI);
 Parameter setAllAzimuthOffsetScale("setAllAzimuthOffsetScale","",0.f,"",-1.0,1.0);
-ParameterBool setAllRatesToOne("setAllRatesToOne","",0.0);
+ParameterBool useRateMultiplier("useRateMultiplier","",0.0);
 Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,44100.0);
 Parameter setAllDurations("setAllDurations","",0.0,"",0.0,10.f);
 
@@ -113,6 +112,9 @@ Trigger generateRandDecorSeed("generateRandDecorSeed","","");
 ParameterBool drawLabels("drawLabels","",1.0);
 
 ParameterBool stereoOutput("stereoOutput","",0.0);
+Parameter playerRateMultiplier("playerRateMultiplier","",0.002,"",0.0,0.1);
+
+ParameterInt displaySource("displaySource","",0,"",0,NUM_SOURCES-1);
 
 int highestChannel = 0;
 int speakerCount = 0;
@@ -249,10 +251,32 @@ public:
     Parameter soundFileStartPhase{"soundFileStartPhase","",0.0,"",0.0,1.0};
     Parameter soundFileDuration{"soundFileDuration","",1.0,"",0.0,1.0};
 
+    //float samplePlayerRateStore = 1.0;
+
+    Trigger loopLengthToRotFreq{"loopLengthToRotFreq","",""};
+    Parameter angFreqOffset{"angFreqOffset","",0.0,"",-1.0,1.0};
+    ParameterInt angFreqCyclesMult{"angFreqCyclesMult","",1,"",1,100};
+
+    float angFreqCyclesStore = 1.0;
+
     VirtualSource(){
 
+        enabled.displayName("Enabled");
+        mute.displayName("Mute");
+        decorrelateSrc.displayName("Decorrelate");
 
-        sourceWidth.displayName("Source Spread");
+        sourceGain.displayName("Gain");
+        panMethod.displayName("Method");
+        positionUpdate.displayName("Position Update");
+        sourceSound.displayName("Sound");
+        fileMenu.displayName("SoundFile Menu");
+
+        samplePlayerRate.displayName("Rate");
+        soundFileStartPhase.displayName("Start Phase");
+        soundFileDuration.displayName("Duration");
+
+        sourceWidth.displayName("Spread");
+        scaleSrcWidth.displayName("Equal Loudness");
 
         centerAzi.displayName("Azimuth");
         aziOffset.displayName("Azi. Offset");
@@ -261,6 +285,19 @@ public:
         centerEle.displayName("Elevation");
         eleOffset.displayName("Elev. Offset");
         eleOffsetScale.displayName("Elev. Offset Scale");
+
+        angularFreq.displayName("Freq - rad/sec");
+        angFreqCycles.displayName("Freq - cycles/sec");
+        angFreqOffset.displayName("Freq Offset");
+        angFreqCyclesMult.displayName("Freq Multiplier");
+
+        loopLengthToRotFreq.displayName("Set Period = SoundFile Duration");
+
+        oscFreq.displayName("Freq");
+
+        posOscFreq.displayName("Freq");
+        posOscAmp.displayName("Amp");
+        posOscPhase.displayName("Phase");
 
 //        aziOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
 //        eleOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
@@ -280,13 +317,30 @@ public:
         positionUpdate.setElements(posUpdateNames);
         fileMenu.setElements(files);
         samplePlayer.load("src/sounds/count.wav");
-        samplePlayerRate.set(1.0 + (.002 * vsBundle.bundleIndex()));
+//        samplePlayerRate.set(1.0 + (.002 * vsBundle.bundleIndex()));
         samplePlayer.rate(1.0);
+        samplePlayerRate.set(1.0);
         soundFileDuration.max(samplePlayer.period());
 
         sourceRamp.rampStartAzimuth = rampStartAzimuth.get();
         sourceRamp.rampEndAzimuth = rampEndAzimuth.get();
         sourceRamp.rampDuration = rampDuration.get();
+
+        angFreqOffset.registerChangeCallback([&](float val){
+
+           angFreqCycles.set(angFreqCyclesStore + val);
+        });
+
+        loopLengthToRotFreq.registerChangeCallback([&](float val){
+            angFreqCyclesStore = (float) angFreqCyclesMult * (1.0/(float)samplePlayer.period());
+            angFreqCycles.set(angFreqCyclesStore + angFreqOffset.get());
+        });
+
+
+        angFreqCyclesMult.registerChangeCallback([&](float val){
+            angFreqCyclesStore = val * (1.0/(float)samplePlayer.period());
+            angFreqCycles.set(angFreqCyclesStore + angFreqOffset.get());
+        });
 
         soundFileStartPhase.registerChangeCallback([&](float val){
             samplePlayer.range(val,soundFileDuration);
@@ -363,6 +417,7 @@ public:
         });
 
         aziInRad.setProcessingCallback([&](float val){
+            //cout << "Azi PC" << endl;
             wrapValues(val);
             return val;
         });
@@ -374,6 +429,7 @@ public:
         fileMenu.registerChangeCallback([&](float val){
             samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
             soundFileDuration.max(samplePlayer.period());
+            setPlayerPhase.max(samplePlayer.frames());
 //            bool didLoad = samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
 //            if(didLoad){
 //                cout << "Did Load " << samplePlayer.period()  << endl;
@@ -400,7 +456,7 @@ public:
         });
 
 //        vsBundle << enabled << sourceGain << aziInRad << positionUpdate << fileMenu << samplePlayerRate << triggerRamp << sourceRamp.rampStartAzimuth << sourceRamp.rampEndAzimuth << sourceRamp.rampDuration << angularFreq;
-        vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
+        vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
         //srcPresets << vsBundle;
     }
 
@@ -651,7 +707,7 @@ public:
     float speedMult = 0.03f;
     Vec3d srcpos {0.0,0.0,0.0};
     ControlGUI parameterGUI;
-    ParameterBundle xsetAllBundle{"xsetAllBundle"};
+    //ParameterBundle xsetAllBundle{"xsetAllBundle"};
 
     //Size of the decorrelation filter. See Kendall p. 75
     //How does this translate to the duration of the impulse response?
@@ -683,21 +739,28 @@ public:
             sender.send("/files",fPath);
         }
 
-        parameterGUI << soundOn << masterGain << stereoOutput << resetSamples << resetPosOscPhase << sampleWise  << combineAllChannels << xFadeCh1_2 << xFadeValue << sourcesToDecorrelate << decorrelationMethod << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev << speakerDensity << drawLabels;
+        parameterGUI << soundOn << masterGain << stereoOutput << resetPosOscPhase << sampleWise << combineAllChannels << xFadeCh1_2 << xFadeValue << sourcesToDecorrelate << decorrelationMethod << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
         //parameterGUI << srcPresets;
-        xsetAllBundle << setAllEnabled << setAllDecorrelate << setAllPanMethod << setAllPosUpdate << setAllSoundFileIdx <<setAllAzimuth << setAllAzimuthOffsetScale << setAllRatesToOne << setPlayerPhase << triggerAllRamps << setAllStartAzi << setAllEndAzi << setAllDurations << setPiano << setMidiPiano;
-        parameterGUI << xsetAllBundle;
+        //xsetAllBundle << setAllEnabled << setAllDecorrelate << setAllPanMethod << setAllPosUpdate << setAllSoundFileIdx <<setAllAzimuth << setAllAzimuthOffsetScale << playerRateMultiplier << useRateMultiplier << setPlayerPhase << triggerAllRamps << setAllStartAzi << setAllEndAzi << setAllDurations;
+        //parameterGUI << xsetAllBundle;
 
         for(int i = 0; i < NUM_SOURCES; i++){
             auto *newVS = new VirtualSource; // This memory is not freed and it should be...
             sources.push_back(newVS);
-            parameterGUI << newVS->vsBundle;
+            //parameterGUI << newVS->vsBundle;
             parameterServer() << newVS->vsBundle;
         }
 
-        parameterServer() << soundOn << resetSamples << resetPosOscPhase << sampleWise << useDelay << masterGain << maxDelay << xsetAllBundle << setMorphTime << recallPreset << combineAllChannels << setAllDecorrelate << decorrelationMethod << speakerDensity << drawLabels << xFadeCh1_2 << xFadeValue << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
+        parameterServer() << soundOn << resetPosOscPhase << sampleWise << useDelay << masterGain << maxDelay << setMorphTime << recallPreset << combineAllChannels << setAllDecorrelate << decorrelationMethod << speakerDensity << drawLabels << xFadeCh1_2 << xFadeValue << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
 
         //htmlServer << parameterServer();
+
+        soundOn.displayName("Sound On");
+        masterGain.displayName("Master Gain");
+        stereoOutput.displayName("Stereo Output");
+        xFadeCh1_2.displayName("Enabled");
+        xFadeValue.displayName("value");
+
 
         sampleWise.setHint("hide", 1.0);
         combineAllChannels.setHint("hide", 1.0);
@@ -787,17 +850,30 @@ public:
             }
         });
 
-        setAllRatesToOne.registerChangeCallback([&](float val){
+        useRateMultiplier.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
                 if(val == 1.f){
-                    v->samplePlayer.rate(1.0);
+                    //v->samplePlayer.rate(1.0);
+                    float newRate = 1.0+ (v->vsBundle.bundleIndex()*playerRateMultiplier.get());
+                    v->samplePlayerRate.set(newRate);
+                   // v->samplePlayer.rate(newRate);
                 }else{
-                    v->samplePlayer.rate(v->samplePlayerRate.get());
+                    v->samplePlayerRate.set(1.0);
+//                    v->samplePlayer.rate(1.0);
                 }
             }
         });
 
-        setAllRatesToOne.set(1.0);
+        playerRateMultiplier.registerChangeCallback([&](float val){
+            if(useRateMultiplier.get()){
+                for(VirtualSource *v: sources){
+                    float newRate = 1.0+ (v->vsBundle.bundleIndex()*val);
+                    v->samplePlayerRate.set(newRate);
+                }
+            }
+        });
+
+        //useRateMultiplier.set(1.0);
 
         setAllAzimuthOffsetScale.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
@@ -1620,7 +1696,7 @@ public:
         for(SpeakerLayer &sl:layers){
             speakerCount += sl.l_speakers.size();
             for(int i = 0; i < sl.l_speakers.size(); i++){
-                parameterGUI << sl.l_speakers[i].enabled  << sl.l_speakers[i].speakerGain;
+                //parameterGUI << sl.l_speakers[i].enabled  << sl.l_speakers[i].speakerGain;
                 presets << *sl.l_speakers[i].enabled;
                 if((int) sl.l_speakers[i].deviceChannel > highestChannel){
                     highestChannel = sl.l_speakers[i].deviceChannel;
@@ -1692,11 +1768,14 @@ public:
     void onCreate() override {
 
         nav().pos(0, 1, 20);
-        parameterGUI.init();
+//        parameterGUI.init();
 
         font.load("src/data/VeraMono.ttf", 28, 1024);
         font.alignCenter();
         font.write(fontMesh, "1", 0.2f);
+
+        imguiInit();
+        parameterGUI.init(0,0,false);
 
         audioIO().start();
     }
@@ -2014,7 +2093,133 @@ public:
                 g.popMatrix();
             }
         }
-        parameterGUI.draw(g);
+        //parameterGUI.draw(g);
+
+        //ImVec4 textColor = {1.0, 0.3f, 0.1f, 1.0};
+
+        imguiBeginFrame();
+        //parameterGUI.draw(g);
+        ParameterGUI::beginPanel("Main");
+        ParameterGUI::drawParameterBool(&soundOn);
+        ParameterGUI::drawParameter(&masterGain);
+        ParameterGUI::drawParameterBool(&stereoOutput);
+
+        ImGui::Separator();
+        ImGui::Text("Cross Fade Ch. 1 and Ch. 2");
+        ParameterGUI::drawParameterBool(&xFadeCh1_2);
+        ParameterGUI::drawParameter(&xFadeValue);
+
+        ImGui::Separator();
+        ImGui::Text("Decorrelation");
+        ParameterGUI::drawMenu(&decorrelationMethod);
+        ParameterGUI::drawTrigger(&generateRandDecorSeed);
+        ParameterGUI::drawParameter(&maxJump);
+        ParameterGUI::drawParameter(&phaseFactor);
+        ParameterGUI::drawParameter(&deltaFreq);
+        ParameterGUI::drawParameter(&maxFreqDev);
+        ParameterGUI::drawParameter(&maxTau);
+        ParameterGUI::drawParameter(&startPhase);
+        ParameterGUI::drawParameter(&phaseDev);
+
+
+        ParameterGUI::endPanel();
+
+        ParameterGUI::beginPanel("Virtual Sources");
+
+        ParameterGUI::drawParameterInt(&displaySource,"");
+
+        VirtualSource *src = sources[displaySource.get()];
+        ParameterGUI::drawParameterBool(&src->enabled);
+        ParameterGUI::drawParameterBool(&src->mute);
+        ParameterGUI::drawParameterBool(&src->decorrelateSrc);
+
+        ParameterGUI::drawParameter(&src->sourceGain);
+
+        ParameterGUI::drawMenu(&src->panMethod);
+        ParameterGUI::drawMenu(&src->positionUpdate);
+        ParameterGUI::drawMenu(&src->sourceSound);
+        ParameterGUI::drawMenu(&src->fileMenu);
+
+        //ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("Sample Player");
+        ParameterGUI::drawParameter(&src->samplePlayerRate);
+        ParameterGUI::drawParameter(&src->soundFileStartPhase);
+        ParameterGUI::drawParameter(&src->soundFileDuration);
+
+        ImGui::Separator();
+        ImGui::Text("Position");
+        ParameterGUI::drawParameter(&src->centerAzi);
+        ParameterGUI::drawParameter(&src->aziOffset);
+        ParameterGUI::drawParameter(&src->aziOffsetScale);
+        ParameterGUI::drawParameter(&src->centerEle);
+        ParameterGUI::drawParameter(&src->eleOffset);
+        ParameterGUI::drawParameter(&src->eleOffsetScale);
+
+        ImGui::Separator();
+        ImGui::Text("Position Update: Moving");
+        ParameterGUI::drawParameter(&src->angularFreq);
+        ParameterGUI::drawParameter(&src->angFreqCycles);
+        ParameterGUI::drawParameter(&src->angFreqOffset);
+        ParameterGUI::drawParameterInt(&src->angFreqCyclesMult,"");
+        ParameterGUI::drawTrigger(&src->loopLengthToRotFreq);
+
+        ImGui::Separator();
+        ImGui::Text("Position Update: Sine");
+        ParameterGUI::drawParameter(&src->posOscFreq);
+        ParameterGUI::drawParameter(&src->posOscAmp);
+        ParameterGUI::drawParameter(&src->posOscPhase);
+
+        ImGui::Separator();
+        ImGui::Text("Sine, Saw, Square");
+        ParameterGUI::drawParameter(&src->oscFreq);
+
+        ImGui::Separator();
+        ImGui::Text("Source Spread");
+        ParameterGUI::drawParameter(&src->sourceWidth);
+        ParameterGUI::drawParameterBool(&src->scaleSrcWidth);
+
+
+        ImGui::Separator();
+        ParameterGUI::endPanel();
+
+        ParameterGUI::beginPanel("Loudspeakers");
+
+        ParameterGUI::drawMenu(&speakerDensity);
+        ParameterGUI::drawParameterBool(&drawLabels);
+        for(SpeakerLayer sl: layers){
+            for(SpeakerV sv: sl.l_speakers){
+                ParameterGUI::drawParameterBool(sv.enabled);
+                ParameterGUI::drawParameter(sv.speakerGain);
+            }
+        }
+        ParameterGUI::endPanel();
+
+        ParameterGUI::beginPanel("Set All Sources");
+        ParameterGUI::drawParameterBool(&setAllEnabled);
+        ParameterGUI::drawParameterBool(&setAllDecorrelate);
+
+        ParameterGUI::drawMenu(&setAllPanMethod);
+        ParameterGUI::drawMenu(&setAllPosUpdate);
+        ParameterGUI::drawMenu(&setAllSoundFileIdx);
+
+        ImGui::Separator();
+        ImGui::Text("SamplePlayers");
+        ParameterGUI::drawParameter(&setPlayerPhase);
+        ParameterGUI::drawParameter(&playerRateMultiplier);
+        ParameterGUI::drawParameterBool(&useRateMultiplier);
+
+        ImGui::Separator();
+        ImGui::Text("Positions");
+        ParameterGUI::drawParameter(&setAllAzimuth);
+        ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
+
+        ParameterGUI::drawTrigger(&resetPosOscPhase);
+
+        ParameterGUI::endPanel();
+        imguiEndFrame();
+        imguiDraw();
+
     }
 
     void printConfiguration(){
