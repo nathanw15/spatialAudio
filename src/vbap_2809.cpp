@@ -17,7 +17,9 @@
 #include "al/ui/al_HtmlInterfaceServer.hpp"
 
 #include "al_ext/spatialaudio/al_Decorrelation.hpp"
-
+//#include "al_ext/soundfile/al_SoundfileBufferedRecord.hpp"
+#include "al_ext/soundfile/al_SoundfileRecordGUI.hpp"
+#include "al_ext/soundfile/al_OutputRecorder.hpp"
 
 #include <atomic>
 #include <vector>
@@ -175,6 +177,133 @@ struct Ramp {
         }
     }
 };
+
+class Event {
+public:
+    Parameter *eventParam;
+    vector<float> eventBP;
+
+    float initialVal;
+
+    float startVal;
+    float targetVal;
+    float currentVal;
+    unsigned int startSample, endSample;
+    int bpIdx = 0;
+
+    bool running = false;
+
+    bool triggered = false;
+
+    bool interpolate = true;
+
+    Event(Parameter *param, float initVal, vector<float> bp){
+        eventParam = param;
+        initialVal = startVal = initVal;
+        eventBP = bp;
+    }
+
+    void start(unsigned int startSamp){
+        running = true;
+        startSample = startSamp;
+        bpIdx = 0;
+        currentVal = startVal = initialVal;
+        targetVal = eventBP[bpIdx];
+        endSample = startSamp + (eventBP[1]*SAMPLE_RATE);
+        eventParam->set(currentVal);
+    }
+
+    void next(unsigned int sampleNum){
+
+        if(triggered){
+            triggered = false;
+            start(sampleNum);
+        }
+
+        if(running){
+
+            if(sampleNum >= endSample){ // set next breakpoint
+                bpIdx +=2;
+
+                if(bpIdx < eventBP.size()){
+                    currentVal = startVal = targetVal;
+                    targetVal = eventBP[bpIdx];
+                    startSample = endSample;
+                    endSample = startSample + (eventBP[bpIdx+1]*SAMPLE_RATE);
+
+                }else if(bpIdx >= eventBP.size()){ // finished with breakpoints
+                    currentVal = targetVal;
+                    running = false;
+                    eventParam->set(currentVal);
+                }
+
+            }else{ // interpolate
+                if(interpolate){
+                    currentVal = (((sampleNum - startSample) * (targetVal - startVal)) / (endSample - startSample)) + startVal;
+                }
+                eventParam->set(currentVal);
+            }
+        }
+    }
+};
+
+class EventGroup{
+public:
+    vector<Event*> events;
+    Trigger triggerEvent{"triggerEvent","",""};
+
+    string groupName;
+
+    vector<pair<Parameter*, float>> initialParams;
+    vector<pair<ParameterBool*, float>> initialBools;
+    vector<pair<ParameterMenu*, string>> initialMenus;
+
+    EventGroup(string name){
+        groupName = name;
+        triggerEvent.displayName(groupName);
+        triggerEvent.registerChangeCallback([&](float val){
+
+//            for(pair<ParameterBool*, float> p: initialBools){
+//                p.first->set(p.second);
+//            }
+            for(pair<Parameter*, float> p: initialParams){
+                p.first->set(p.second);
+            }
+
+            for(pair<ParameterMenu*, string> p: initialMenus){
+                //p.first->set(p.second);
+                p.first->setCurrent(p.second);
+            }
+
+            for(Event *e: events){
+                e->triggered = true;
+            }
+        });
+    }
+
+    void processEvent(unsigned int t){
+        for(Event *e: events){
+            e->next(t);
+        }
+    }
+
+//    void addInitialBool(ParameterBool *paramBool,float val){
+//        initialBools.push_back(make_pair(paramBool,val));
+//    }
+
+    void setParameter(Parameter *param,float val){
+        initialParams.push_back(make_pair(param,val));
+    }
+
+    void setMenu(ParameterMenu *param,string val){
+        initialMenus.push_back(make_pair(param,val));
+    }
+
+
+
+};
+
+vector<EventGroup*> eventGroups;
 
 void initPanner();
 
@@ -724,8 +853,18 @@ public:
     std::string pathToInterfaceJs = "interface.js";
     HtmlInterfaceServer htmlServer{pathToInterfaceJs};
 
+//    SoundFileBufferedRecord soundFile;
+    OutputRecorder soundFileRecorder;
+
+
+//    Trigger triggerEvent{"triggerEvent","",""};
+
+    //ParameterBool record{"record","",0,"",0,1};
+
     MyApp()
     {
+
+//        soundFile.open("test.wav",audioIO().framesPerSecond(),2);
 
         searchpaths.addAppPaths();
         searchpaths.addRelativePath("src/sounds");
@@ -776,6 +915,23 @@ public:
         setAllSoundFileIdx.setElements(files);
         speakerDensity.setElements(spkDensityMenuNames);
         decorrelationMethod.setElements(decorMethodMenuNames);
+
+
+//        record.registerChangeCallback([&](float val){
+//            if(val == 0.0){
+//                soundFile.close();
+//            }
+
+//        });
+
+//        triggerEvent.registerChangeCallback([&](float val){
+////            Event *e = events[0];
+////            e->triggered = true;
+//            for(Event *e: events){
+//                e->triggered = true;
+//            }
+
+//        });
 
         decorrelationMethod.registerChangeCallback([&](float val){
 
@@ -1763,6 +1919,44 @@ public:
 
         decorrelation.configure(audioIO().framesPerBuffer(), routingMap,
                                 true, decorrelationSeed, maxJump.get(),phaseFactor.get());
+
+
+        //soundFile.open("test2.wav",audioIO().framesPerSecond(),highestChannel+1);
+
+        audioIO().append(soundFileRecorder);
+
+
+
+
+//        VirtualSource *vs = sources[0];
+//        Parameter * gainParam =  &vs->sourceGain;
+//        vector<float> bp{1.0,1.0,1.0,1.0,0.0,1.0};
+//        auto *gainEvent = new Event(gainParam,0.0,bp);
+//        events.push_back(gainEvent);
+        VirtualSource *vs = sources[0];
+        //Parameter * gainParam =  &vs->sourceGain;
+        //vector<float> bp{1.0,1.0,1.0,1.0,0.0,1.0};
+
+        auto *group = new EventGroup("Group1");
+
+        auto *gainEvent = new Event(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
+        group->events.push_back(gainEvent);
+
+        auto *gainEvent2 = new Event(&vs->centerAzi,0.0,{2.0,3.0,1.0,3.0,0.0,5.0});
+        gainEvent2->interpolate = false;
+        group->events.push_back(gainEvent2);
+
+        group->setParameter(&vs->enabled,1.0);
+        group->setMenu(&vs->fileMenu,"shortCount.wav");
+
+        eventGroups.push_back(group);
+
+        auto *group2 = new EventGroup("Group2");
+        auto *srcWidthEvent = new Event(&vs->sourceWidth,0.0,{2.0,7.0});
+        group2->events.push_back(srcWidthEvent);
+
+        eventGroups.push_back(group2);
+
     }
 
     void onCreate() override {
@@ -1825,6 +2019,12 @@ public:
             while (io()) {
 
                 ++t;
+
+
+                for(EventGroup *e: eventGroups){
+                    e->processEvent(t);
+                    //e->next(t);
+                }
 
                 if(sampleWise.get()){
                         for(VirtualSource *v: sources){
@@ -1973,6 +2173,17 @@ public:
 
         }
 
+
+//        if(record.get()){
+//            std::vector<float *> buffers;
+//            for(int i = 0; i < io.channelsOut(); i++){ //TODO: Get the actual channels
+//                buffers.push_back(io.outBuffer(i));
+//            }
+////            soundFile.write({io.outBuffer(0),io.outBuffer(1)}, io.framesPerBuffer());
+//            soundFile.write(buffers, io.framesPerBuffer());
+//        }
+
+
     }
 
     virtual void onDraw(Graphics &g) override {
@@ -2099,10 +2310,27 @@ public:
 
         imguiBeginFrame();
         //parameterGUI.draw(g);
+
+        ParameterGUI::beginPanel("Record GUI");
+        SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder,
+                                               audioIO().framesPerSecond(),
+                                               audioIO().channelsOut());
+        ParameterGUI::endPanel();
+
+
+
+        ParameterGUI::beginPanel("Event Groups");
+        for(EventGroup *eg: eventGroups){
+            ParameterGUI::drawTrigger(&eg->triggerEvent);
+        }
+        ParameterGUI::endPanel();
+
         ParameterGUI::beginPanel("Main");
         ParameterGUI::drawParameterBool(&soundOn);
         ParameterGUI::drawParameter(&masterGain);
         ParameterGUI::drawParameterBool(&stereoOutput);
+
+        //ParameterGUI::drawParameterBool(&record);
 
         ImGui::Separator();
         ImGui::Text("Cross Fade Ch. 1 and Ch. 2");
