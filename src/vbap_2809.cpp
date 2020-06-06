@@ -14,7 +14,7 @@
 #include "al/ui/al_Parameter.hpp"
 #include "al/ui/al_ParameterServer.hpp"
 #include "al/ui/al_ControlGUI.hpp"
-#include "al/ui/al_HtmlInterfaceServer.hpp"
+//#include "al/ui/al_HtmlInterfaceServer.hpp"
 
 #include "al_ext/spatialaudio/al_Decorrelation.hpp"
 //#include "al_ext/soundfile/al_SoundfileBufferedRecord.hpp"
@@ -56,7 +56,7 @@ PresetHandler presets("data/presets");
 SearchPaths searchpaths;
 
 vector<string> files;
-vector<string> posUpdateNames{"off", "trajectory", "moving","Sine"};
+vector<string> posUpdateNames{"Static", "Trajectory", "Moving","Sine"};
 vector<string> panningMethodNames{"LBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
@@ -245,9 +245,45 @@ public:
     }
 };
 
+class EventGroup;
+
+class TriggerGroup{
+public:
+    EventGroup *groupToTrigger;
+    unsigned int endSample;
+    bool running = false;
+    bool triggered = false;
+
+    float triggerTime;
+
+    TriggerGroup(EventGroup *group, float trigTime){
+        groupToTrigger = group;
+        triggerTime = trigTime;
+    }
+
+    void triggerNextGroup();
+
+    void next(unsigned int sampleNum){
+
+        if(triggered){
+            triggered = false;
+            running = true;
+            endSample = sampleNum + (triggerTime*SAMPLE_RATE);
+        }
+
+        if(running){
+            if(sampleNum >= endSample){
+                triggerNextGroup();
+                running = false;
+            }
+        }
+    }
+};
+
 class EventGroup{
 public:
     vector<Event*> events;
+    vector<TriggerGroup*> triggerGroups;
     Trigger triggerEvent{"triggerEvent","",""};
 
     string groupName;
@@ -276,6 +312,10 @@ public:
             for(Event *e: events){
                 e->triggered = true;
             }
+
+            for(TriggerGroup *tg: triggerGroups){
+                tg->triggered = true;
+            }
         });
     }
 
@@ -283,7 +323,16 @@ public:
         for(Event *e: events){
             e->next(t);
         }
+
+        for(TriggerGroup *tg: triggerGroups){
+            tg->next(t);
+        }
+
     }
+
+//    void TriggerGroup::triggerNextGroup(){
+//        groupToTrigger->triggerEvent.set(1.0);
+//    }
 
 //    void addInitialBool(ParameterBool *paramBool,float val){
 //        initialBools.push_back(make_pair(paramBool,val));
@@ -297,13 +346,24 @@ public:
         initialMenus.push_back(make_pair(param,val));
     }
 
+    void addEvent(Parameter *param, float initialVal, vector<float> breakPoints, bool interpolate = true){
 
+        Event *e = new Event(param, initialVal,breakPoints);
+        e->interpolate = interpolate;
+        events.push_back(e);
+    }
+
+    void triggerGroup(EventGroup *groupToTrigger, float triggerTime){
+        triggerGroups.push_back(new TriggerGroup(groupToTrigger,triggerTime));
+    }
 
 };
 
 vector<EventGroup*> eventGroups;
 
-
+void TriggerGroup::triggerNextGroup(){
+    groupToTrigger->triggerEvent.set(true);
+}
 
 
 void initPanner();
@@ -447,6 +507,7 @@ public:
         positionUpdate.setElements(posUpdateNames);
         fileMenu.setElements(files);
         samplePlayer.load("src/sounds/count.wav");
+        fileMenu.setCurrent("count.wav");
 //        samplePlayerRate.set(1.0 + (.002 * vsBundle.bundleIndex()));
         samplePlayer.rate(1.0);
         samplePlayerRate.set(1.0);
@@ -836,6 +897,8 @@ public:
 
     SpeakerGroup(string name){
         groupName = name;
+        enable.displayName("Enable");
+        gain.displayName("Gain");
 
         enable.registerChangeCallback([&](float val){
             for(SpeakerV *s: speakers){
@@ -855,7 +918,6 @@ public:
            for(SpeakerV *s: speakers){
                s->speakerGain->set(val);
            }
-
         });
 
     }
@@ -874,7 +936,6 @@ public:
             }
         }
     }
-
 
 };
 
@@ -907,8 +968,8 @@ public:
     Font font;
     Mesh fontMesh;
 
-    std::string pathToInterfaceJs = "interface.js";
-    HtmlInterfaceServer htmlServer{pathToInterfaceJs};
+//    std::string pathToInterfaceJs = "interface.js";
+//    HtmlInterfaceServer htmlServer{pathToInterfaceJs};
 
 //    SoundFileBufferedRecord soundFile;
     OutputRecorder soundFileRecorder;
@@ -957,6 +1018,32 @@ public:
         xFadeCh1_2.displayName("Enabled");
         xFadeValue.displayName("value");
 
+        setAllEnabled.displayName("Enabled");
+        setAllDecorrelate.displayName("Decorrelate");
+        setAllPanMethod.displayName("Method");
+        setAllPosUpdate.displayName("Position Update");
+        setAllSoundFileIdx.displayName("Sound File");
+
+        setPlayerPhase.displayName("Phase");
+        playerRateMultiplier.displayName("Rate Multiplier");
+        useRateMultiplier.displayName("Use Rate Multiplier");
+
+        setAllAzimuth.displayName("Azimuth");
+        setAllAzimuthOffsetScale.displayName("Azi. Offset Scale");
+        resetPosOscPhase.displayName("Reset Position Osc. Phase");
+
+        decorrelationMethod.displayName("Method");
+        generateRandDecorSeed.displayName("New Random Seed");
+        maxJump.displayName("Max Jump");
+        phaseFactor.displayName("Phase Factor");
+
+        deltaFreq.displayName("Delta Freq.");
+        maxFreqDev.displayName("Max Freq. Deviation");
+        maxTau.displayName("Max Tau");
+        startPhase.displayName("Start Phase");
+        phaseDev.displayName("Phase Deviation");
+
+        displaySource.displayName("Source Index");
 
         sampleWise.setHint("hide", 1.0);
         combineAllChannels.setHint("hide", 1.0);
@@ -1929,7 +2016,7 @@ public:
         audioIO().channelsOut(highestChannel + 1);
         audioIO().channelsOutDevice();
 
-        cout << "Hightst Channel: " << highestChannel << endl;
+        //cout << "Hightst Channel: " << highestChannel << endl;
 
         mPeaks = new atomic<float>[highestChannel + 1];
 
@@ -1963,72 +2050,45 @@ public:
         }
 
         //Prints routing map
-        for(auto it = routingMap.cbegin(); it != routingMap.cend(); ++it){
-            std::cout << "Decorrelation input Channel: " << it->first << endl;
-            cout << "Values: " << endl;
-            for(auto sec: it->second){
-                cout<< sec << " ";
-            }
-            cout << endl;
-        }
+//        for(auto it = routingMap.cbegin(); it != routingMap.cend(); ++it){
+//            //std::cout << "Decorrelation input Channel: " << it->first << endl;
+//            //cout << "Values: " << endl;
+//            for(auto sec: it->second){
+//                cout<< sec << " ";
+//            }
+//            cout << endl;
+//        }
 
         decorrelation.configure(audioIO().framesPerBuffer(), routingMap,
                                 true, decorrelationSeed, maxJump.get(),phaseFactor.get());
 
 
-        //soundFile.open("test2.wav",audioIO().framesPerSecond(),highestChannel+1);
-
         audioIO().append(soundFileRecorder);
 
 
-
-
-//        VirtualSource *vs = sources[0];
-//        Parameter * gainParam =  &vs->sourceGain;
-//        vector<float> bp{1.0,1.0,1.0,1.0,0.0,1.0};
-//        auto *gainEvent = new Event(gainParam,0.0,bp);
-//        events.push_back(gainEvent);
         VirtualSource *vs = sources[0];
-        //Parameter * gainParam =  &vs->sourceGain;
-        //vector<float> bp{1.0,1.0,1.0,1.0,0.0,1.0};
 
-        auto *group = new EventGroup("Group1");
-
-        auto *gainEvent = new Event(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
-        group->events.push_back(gainEvent);
-
-        auto *gainEvent2 = new Event(&vs->centerAzi,0.0,{2.0,3.0,1.0,3.0,0.0,5.0});
-        gainEvent2->interpolate = false;
-        group->events.push_back(gainEvent2);
-
+        auto *group = new EventGroup("Group 1");
+        group->addEvent(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
+        group->addEvent(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
         group->setParameter(&vs->enabled,1.0);
         group->setMenu(&vs->fileMenu,"shortCount.wav");
 
+        auto *group2 = new EventGroup("Group 2");
+        group2->addEvent(&vs->sourceWidth,0.0,{2.0,7.0});
+
+        group->triggerGroup(group2,4.0);
+
         eventGroups.push_back(group);
-
-        auto *group2 = new EventGroup("Group2");
-        auto *srcWidthEvent = new Event(&vs->sourceWidth,0.0,{2.0,7.0});
-        group2->events.push_back(srcWidthEvent);
-
         eventGroups.push_back(group2);
 
-
-//        vector<SpeakerV *> allspeakers;
-
-//        for(SpeakerLayer *sl: layers){
-//            for(SpeakerV *sv: sl){
-//                allspeakers.push_back(sv);
-//            }
-//        }
-
         auto *speakerGroup = new SpeakerGroup("Group 1");
-
-       // SpeakerLayer *sl = &layers[0];
-
-       // speakerGroup->addSpeaker(&sl->l_speakers[0]);
-
         speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
         speakerGroups.push_back(speakerGroup);
+
+        auto *group3 = new EventGroup("Group 3");
+        group3->addEvent(&speakerGroup->gain,1.0,{0.0,5.0});
+        eventGroups.push_back(group3);
 
 
 
@@ -2074,7 +2134,7 @@ public:
                         //Zotter Method
                         decorrelation.configureDeterministic(audioIO().framesPerBuffer(), routingMap, true, decorrelationSeed, deltaFreq, maxFreqDev, maxTau, startPhase, phaseDev);
                     }
-                    cout << "IR lenghts: " << decorrelation.getSize() << endl;
+                    //cout << "IR lenghts: " << decorrelation.getSize() << endl;
                 }
 
                 for(VirtualSource *v: sources){
@@ -2382,14 +2442,6 @@ public:
 
         imguiBeginFrame();
 
-        ParameterGUI::beginPanel("Record GUI");
-        SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder,
-                                               audioIO().framesPerSecond(),
-                                               audioIO().channelsOut());
-        ParameterGUI::endPanel();
-
-
-
         ParameterGUI::beginPanel("Speaker Groups");
         for(SpeakerGroup *sg: speakerGroups){
             ImGui::Text(sg->groupName.c_str());
@@ -2410,24 +2462,76 @@ public:
         ParameterGUI::drawParameter(&masterGain);
         ParameterGUI::drawParameterBool(&stereoOutput);
 
-        //ParameterGUI::drawParameterBool(&record);
+        ImGui::Separator();
+
+        if(ImGui::TreeNode("Record")){
+            SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder, audioIO().framesPerSecond(), audioIO().channelsOut());
+            ImGui::TreePop();
+        }
 
         ImGui::Separator();
-        ImGui::Text("Cross Fade Ch. 1 and Ch. 2");
-        ParameterGUI::drawParameterBool(&xFadeCh1_2);
-        ParameterGUI::drawParameter(&xFadeValue);
+//        ImGui::Text("Cross Fade Ch. 1 and Ch. 2");
+        if(ImGui::TreeNode("Cross Fade Ch. 1 and Ch. 2")){
+            ParameterGUI::drawParameterBool(&xFadeCh1_2);
+            ParameterGUI::drawParameter(&xFadeValue);
+            ImGui::TreePop();
+        }
 
         ImGui::Separator();
-        ImGui::Text("Decorrelation");
-        ParameterGUI::drawMenu(&decorrelationMethod);
-        ParameterGUI::drawTrigger(&generateRandDecorSeed);
-        ParameterGUI::drawParameter(&maxJump);
-        ParameterGUI::drawParameter(&phaseFactor);
-        ParameterGUI::drawParameter(&deltaFreq);
-        ParameterGUI::drawParameter(&maxFreqDev);
-        ParameterGUI::drawParameter(&maxTau);
-        ParameterGUI::drawParameter(&startPhase);
-        ParameterGUI::drawParameter(&phaseDev);
+//        ImGui::Text("Decorrelation");
+        if(ImGui::TreeNode("Decorrelation")){
+            ParameterGUI::drawMenu(&decorrelationMethod);
+            ParameterGUI::drawTrigger(&generateRandDecorSeed);
+            ParameterGUI::drawParameter(&maxJump);
+            ParameterGUI::drawParameter(&phaseFactor);
+            ParameterGUI::drawParameter(&deltaFreq);
+            ParameterGUI::drawParameter(&maxFreqDev);
+            ParameterGUI::drawParameter(&maxTau);
+            ParameterGUI::drawParameter(&startPhase);
+            ParameterGUI::drawParameter(&phaseDev);
+            ImGui::TreePop();
+        }
+
+        ImGui::Separator();
+
+        if(ImGui::TreeNode("Set All Sources")){
+            ParameterGUI::drawParameterBool(&setAllEnabled);
+            ParameterGUI::drawParameterBool(&setAllDecorrelate);
+
+            ParameterGUI::drawMenu(&setAllPanMethod);
+            ParameterGUI::drawMenu(&setAllPosUpdate);
+            ParameterGUI::drawMenu(&setAllSoundFileIdx);
+
+            ImGui::Separator();
+            ImGui::Text("Sample Players");
+            ParameterGUI::drawParameter(&setPlayerPhase);
+            ParameterGUI::drawParameter(&playerRateMultiplier);
+            ParameterGUI::drawParameterBool(&useRateMultiplier);
+
+            ImGui::Separator();
+            ImGui::Text("Positions");
+            ParameterGUI::drawParameter(&setAllAzimuth);
+            ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
+
+            ParameterGUI::drawTrigger(&resetPosOscPhase);
+
+            ImGui::TreePop();
+        }
+
+        ImGui::Separator();
+
+        if(ImGui::TreeNode("Loudspeakers")){
+
+            ParameterGUI::drawMenu(&speakerDensity);
+            ParameterGUI::drawParameterBool(&drawLabels);
+            for(SpeakerLayer sl: layers){
+                for(SpeakerV sv: sl.l_speakers){
+                    ParameterGUI::drawParameterBool(sv.enabled);
+                    ParameterGUI::drawParameter(sv.speakerGain);
+                }
+            }
+            ImGui::TreePop();
+        }
 
 
         ParameterGUI::endPanel();
@@ -2491,40 +2595,42 @@ public:
         ImGui::Separator();
         ParameterGUI::endPanel();
 
-        ParameterGUI::beginPanel("Loudspeakers");
+//        ParameterGUI::beginPanel("Loudspeakers");
 
-        ParameterGUI::drawMenu(&speakerDensity);
-        ParameterGUI::drawParameterBool(&drawLabels);
-        for(SpeakerLayer sl: layers){
-            for(SpeakerV sv: sl.l_speakers){
-                ParameterGUI::drawParameterBool(sv.enabled);
-                ParameterGUI::drawParameter(sv.speakerGain);
-            }
-        }
-        ParameterGUI::endPanel();
+//        ParameterGUI::drawMenu(&speakerDensity);
+//        ParameterGUI::drawParameterBool(&drawLabels);
+//        for(SpeakerLayer sl: layers){
+//            for(SpeakerV sv: sl.l_speakers){
+//                ParameterGUI::drawParameterBool(sv.enabled);
+//                ParameterGUI::drawParameter(sv.speakerGain);
+//            }
+//        }
+//        ParameterGUI::endPanel();
 
-        ParameterGUI::beginPanel("Set All Sources");
-        ParameterGUI::drawParameterBool(&setAllEnabled);
-        ParameterGUI::drawParameterBool(&setAllDecorrelate);
+//        ParameterGUI::beginPanel("Set All Sources");
+//        ParameterGUI::drawParameterBool(&setAllEnabled);
+//        ParameterGUI::drawParameterBool(&setAllDecorrelate);
 
-        ParameterGUI::drawMenu(&setAllPanMethod);
-        ParameterGUI::drawMenu(&setAllPosUpdate);
-        ParameterGUI::drawMenu(&setAllSoundFileIdx);
+//        ParameterGUI::drawMenu(&setAllPanMethod);
+//        ParameterGUI::drawMenu(&setAllPosUpdate);
+//        ParameterGUI::drawMenu(&setAllSoundFileIdx);
 
-        ImGui::Separator();
-        ImGui::Text("SamplePlayers");
-        ParameterGUI::drawParameter(&setPlayerPhase);
-        ParameterGUI::drawParameter(&playerRateMultiplier);
-        ParameterGUI::drawParameterBool(&useRateMultiplier);
+//        ImGui::Separator();
+//        ImGui::Text("SamplePlayers");
+//        ParameterGUI::drawParameter(&setPlayerPhase);
+//        ParameterGUI::drawParameter(&playerRateMultiplier);
+//        ParameterGUI::drawParameterBool(&useRateMultiplier);
 
-        ImGui::Separator();
-        ImGui::Text("Positions");
-        ParameterGUI::drawParameter(&setAllAzimuth);
-        ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
+//        ImGui::Separator();
+//        ImGui::Text("Positions");
+//        ParameterGUI::drawParameter(&setAllAzimuth);
+//        ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
 
-        ParameterGUI::drawTrigger(&resetPosOscPhase);
+//        ParameterGUI::drawTrigger(&resetPosOscPhase);
 
-        ParameterGUI::endPanel();
+//        ParameterGUI::endPanel();
+
+
         imguiEndFrame();
         imguiDraw();
 
