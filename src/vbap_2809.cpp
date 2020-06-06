@@ -192,9 +192,7 @@ public:
     int bpIdx = 0;
 
     bool running = false;
-
     bool triggered = false;
-
     bool interpolate = true;
 
     Event(Parameter *param, float initVal, vector<float> bp){
@@ -304,6 +302,9 @@ public:
 };
 
 vector<EventGroup*> eventGroups;
+
+
+
 
 void initPanner();
 
@@ -786,6 +787,8 @@ public:
 };
 
 std::vector<SpeakerLayer> layers;
+std::vector<SpeakerV *> allSpeakers;
+
 
 bool speakerSort(SpeakerV const *first, SpeakerV const *second){
     return first->azimuth < second->azimuth;
@@ -822,6 +825,60 @@ void initPanner(){
 
 //    enabledSpeakersLock.unlock();
 }
+
+
+class SpeakerGroup{
+public:
+    vector<SpeakerV*> speakers;
+    string groupName = "";
+    ParameterBool enable{"enable","",1,"",0,1};
+    Parameter gain{"groupGain","",0.0,"",0.0,1.0};
+
+    SpeakerGroup(string name){
+        groupName = name;
+
+        enable.registerChangeCallback([&](float val){
+            for(SpeakerV *s: speakers){
+                if(val == 1.0){
+                    if(s->enabled->get() == 0.0){
+                        s->enabled->set(1.0);
+                    }
+                }else{
+                    if(s->enabled->get() == 1.0){
+                        s->enabled->set(0.0);
+                    }
+                }
+            }
+        });
+
+        gain.registerChangeCallback([&](float val){
+           for(SpeakerV *s: speakers){
+               s->speakerGain->set(val);
+           }
+
+        });
+
+    }
+
+    void addSpeaker(SpeakerV *speaker){
+        speakers.push_back(speaker);
+    }
+
+    void addSpeakersByChannel(vector<int> channels){
+        for(int ch: channels){
+            for(SpeakerV *s: allSpeakers){
+                if(s->deviceChannel == ch){
+                    addSpeaker(s);
+                    break;
+                }
+            }
+        }
+    }
+
+
+};
+
+vector<SpeakerGroup *> speakerGroups;
 
 //class MyApp : public App
 struct MyApp : public App
@@ -1480,7 +1537,6 @@ public:
 
             }else{
                 //Only one layer so make its gain 1
-               // cout << "ONLY ONE Layer" << endl;
                 layerGains[0] = 1.0;
             }
 
@@ -1511,13 +1567,10 @@ public:
                             setOutput(io,speaker2->deviceChannel,io.frame(),sampleOut2 * gains[1] * xFadeGain * speaker2->speakerGain->get());
                         }
                     } else{ // don't decorrelate
-                        //float sample = vs->getSample();
-                        //cout << speaker1->deviceChannel << endl;
                         setOutput(io,speaker1->deviceChannel,io.frame(),sample * gains[0] * xFadeGain * speaker1->speakerGain->get());
                         setOutput(io,speaker2->deviceChannel,io.frame(),sample * gains[1] * xFadeGain * speaker2->speakerGain->get());
                     }
                 }
-
             }
 
 
@@ -1857,6 +1910,8 @@ public:
                 if((int) sl.l_speakers[i].deviceChannel > highestChannel){
                     highestChannel = sl.l_speakers[i].deviceChannel;
                 }
+
+                allSpeakers.push_back(&sl.l_speakers[i]); //Add reference to allSpeakers
             }
         }
 
@@ -1957,6 +2012,26 @@ public:
 
         eventGroups.push_back(group2);
 
+
+//        vector<SpeakerV *> allspeakers;
+
+//        for(SpeakerLayer *sl: layers){
+//            for(SpeakerV *sv: sl){
+//                allspeakers.push_back(sv);
+//            }
+//        }
+
+        auto *speakerGroup = new SpeakerGroup("Group 1");
+
+       // SpeakerLayer *sl = &layers[0];
+
+       // speakerGroup->addSpeaker(&sl->l_speakers[0]);
+
+        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
+        speakerGroups.push_back(speakerGroup);
+
+
+
     }
 
     void onCreate() override {
@@ -2020,10 +2095,8 @@ public:
 
                 ++t;
 
-
                 for(EventGroup *e: eventGroups){
                     e->processEvent(t);
-                    //e->next(t);
                 }
 
                 if(sampleWise.get()){
@@ -2306,10 +2379,8 @@ public:
         }
         //parameterGUI.draw(g);
 
-        //ImVec4 textColor = {1.0, 0.3f, 0.1f, 1.0};
 
         imguiBeginFrame();
-        //parameterGUI.draw(g);
 
         ParameterGUI::beginPanel("Record GUI");
         SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder,
@@ -2318,6 +2389,15 @@ public:
         ParameterGUI::endPanel();
 
 
+
+        ParameterGUI::beginPanel("Speaker Groups");
+        for(SpeakerGroup *sg: speakerGroups){
+            ImGui::Text(sg->groupName.c_str());
+            ParameterGUI::drawParameterBool(&sg->enable);
+            ParameterGUI::drawParameter(&sg->gain);
+            ImGui::Separator();
+        }
+        ParameterGUI::endPanel();
 
         ParameterGUI::beginPanel("Event Groups");
         for(EventGroup *eg: eventGroups){
