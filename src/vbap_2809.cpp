@@ -33,6 +33,8 @@
 #define IR_LENGTH 2048
 #define NUM_SOURCES 5
 
+#define INPUT_CHANNELS 4
+
 using namespace al;
 using namespace std;
 
@@ -50,7 +52,7 @@ ParameterBool useDelay("useDelay","", 0.0);
 Parameter masterGain("masterGain","",0.5,"",0.0,1.0);
 ParameterBool soundOn("soundOn","",0.0);
 
-PresetHandler presets("data/presets");
+//PresetHandler presets("data/presets");
 //PresetHandler srcPresets("data/srcPresets");
 
 SearchPaths searchpaths;
@@ -88,8 +90,8 @@ Trigger setMidiPiano("setMidiPiano","","");
 ParameterBool combineAllChannels("combineAllChannels","",0.0);
 //HtmlInterfaceServer interfaceServer("/Users/primary1/Documents/code/allolibCode/projects/interface.js");
 
-Parameter setMorphTime("setMorphTime","",0.0,"",0.0, 10.0);
-Parameter recallPreset("recallPreset","",0.0,"",0.0, 30.0);
+//Parameter setMorphTime("setMorphTime","",0.0,"",0.0, 10.0);
+//Parameter recallPreset("recallPreset","",0.0,"",0.0, 30.0);
 
 ParameterMenu speakerDensity("speakerDensity","",0,"");
 vector<string> spkDensityMenuNames{"All", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Skip 5"};
@@ -129,7 +131,6 @@ int speakerCount = 0;
 mutex enabledSpeakersLock;
 
 Mat<2,double> matrix;
-
 
 bool showVirtualSources = false;
 bool showEvents = false;
@@ -443,6 +444,7 @@ public:
     Parameter rampEndAzimuth{"rampEndAzimuth","",0.5,"",-1.0*M_PI,M_PI};
     Parameter rampDuration{"rampDuration", "",1.0,"",0.0,10.0};
     ParameterMenu sourceSound{"sourceSound","",0,""};
+    ParameterInt inputChannel{"inputChannel","",0,"",0,INPUT_CHANNELS-1};
 
     Parameter sourceWidth{"sourceWidth","", M_PI/8.0f, "", 0.0f,M_2PI};
     ParameterMenu panMethod{"panMethod","",0,""};
@@ -471,6 +473,7 @@ public:
         positionUpdate.displayName("Position Update");
         sourceSound.displayName("Sound");
         fileMenu.displayName("SoundFile Menu");
+        inputChannel.displayName("Audio In Ch.");
 
         samplePlayerRate.displayName("Rate");
         soundFileStartPhase.displayName("Start Phase");
@@ -514,7 +517,7 @@ public:
         positionOsc.freq(posOscFreq.get());
 
         panMethod.setElements(panningMethodNames);
-        sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square"});
+        sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn"});
         positionUpdate.setElements(posUpdateNames);
         fileMenu.setElements(files);
         samplePlayer.load("src/sounds/count.wav");
@@ -659,7 +662,7 @@ public:
 
 //        vsBundle << enabled << sourceGain << aziInRad << positionUpdate << fileMenu << samplePlayerRate << triggerRamp << sourceRamp.rampStartAzimuth << sourceRamp.rampEndAzimuth << sourceRamp.rampDuration << angularFreq;
         vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
-        //srcPresets << vsBundle;
+
     }
 
 //    void updateEnabledSpeakers(){
@@ -697,7 +700,7 @@ public:
         }
     }
 
-    float getSample(){
+    float getSample(AudioIOData &io, int &channel){
 
         float sample;
 
@@ -724,6 +727,9 @@ public:
         case 5:
             sample = square() * 0.2;
             break;
+        case 6:
+            sample = io.in(channel,io.frame());
+            break;
         default:
             sample = 0.0;
             break;
@@ -741,11 +747,11 @@ public:
 
     }
     
-    void getBuffer(float *buffer){
-        for(int i = 0; i < BLOCK_SIZE; i++){
-            buffer[i] = getSample();
-        }
-    }
+//    void getBuffer(float *buffer){
+//        for(int i = 0; i < BLOCK_SIZE; i++){
+//            buffer[i] = getSample();
+//        }
+//    }
 
     float getSamplePlayerPhase(){
         return samplePlayer.pos()/samplePlayer.frames();
@@ -982,7 +988,6 @@ public:
 //    std::string pathToInterfaceJs = "interface.js";
 //    HtmlInterfaceServer htmlServer{pathToInterfaceJs};
 
-//    SoundFileBufferedRecord soundFile;
     OutputRecorder soundFileRecorder;
 
 
@@ -1008,7 +1013,7 @@ public:
         }
 
         parameterGUI << soundOn << masterGain << stereoOutput << resetPosOscPhase << sampleWise << combineAllChannels << xFadeCh1_2 << xFadeValue << sourcesToDecorrelate << decorrelationMethod << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
-        //parameterGUI << srcPresets;
+
         //xsetAllBundle << setAllEnabled << setAllDecorrelate << setAllPanMethod << setAllPosUpdate << setAllSoundFileIdx <<setAllAzimuth << setAllAzimuthOffsetScale << playerRateMultiplier << useRateMultiplier << setPlayerPhase << triggerAllRamps << setAllStartAzi << setAllEndAzi << setAllDurations;
         //parameterGUI << xsetAllBundle;
 
@@ -1019,7 +1024,13 @@ public:
             parameterServer() << newVS->vsBundle;
         }
 
-        parameterServer() << soundOn << resetPosOscPhase << sampleWise << useDelay << masterGain << maxDelay << setMorphTime << recallPreset << combineAllChannels << setAllDecorrelate << decorrelationMethod << speakerDensity << drawLabels << xFadeCh1_2 << xFadeValue << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
+        parameterServer() << soundOn << resetPosOscPhase << sampleWise
+                          << useDelay << masterGain << maxDelay
+                          << combineAllChannels << setAllDecorrelate
+                          << decorrelationMethod << speakerDensity << drawLabels
+                          << xFadeCh1_2 << xFadeValue << generateRandDecorSeed
+                          << maxJump << phaseFactor << deltaFreq << maxFreqDev
+                          << maxTau << startPhase << phaseDev;
 
         //htmlServer << parameterServer();
 
@@ -1130,13 +1141,7 @@ public:
         startPhase.registerChangeCallback([&](float val){configureDecorrelation.set(1.0);});
         phaseDev.registerChangeCallback([&](float val){configureDecorrelation.set(1.0);});
 
-//        setMorphTime.registerChangeCallback([&](float val){
-//            srcPresets.setMorphTime(val);
-//        });
 
-//        recallPreset.registerChangeCallback([&](float val){
-//            srcPresets.recallPreset(val);
-//        });
 
         resetPosOscPhase.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
@@ -1550,7 +1555,7 @@ public:
         }
     }
 
-    void renderBufferDelaySpeakers(AudioIOData &io,const float &srcAzi, const float *buffer){
+    void BufferDelaySpeakers(AudioIOData &io,const float &srcAzi, const float *buffer){
 //        int speakerChan1, speakerChan2;
 //        Vec3d gains = calcGains(io,srcAzi, speakerChan1, speakerChan2);
 
@@ -1599,6 +1604,8 @@ public:
 
         int vsIndex = vs->vsBundle.bundleIndex();
         int outputBufferOffset = (highestChannel+1)*vsIndex;
+
+        int inputChannel = vs->inputChannel.get();
 
         float xFadeGain = 1.0;
 
@@ -1656,7 +1663,7 @@ public:
 
             float sample;
             if(!vs->decorrelateSrc.get()){
-                sample = vs->getSample();
+                sample = vs->getSample(io,inputChannel);
             }
 
             for(int i = 0; i < layers.size(); i++){
@@ -1695,7 +1702,7 @@ public:
             float gainsAccum = 0.0;
             float sample = 0.0f;
             if(!vs->decorrelateSrc.get()){
-                sample = vs->getSample();
+                sample = vs->getSample(io, inputChannel);
             }
 
             for(SpeakerLayer& sl: layers){
@@ -1855,7 +1862,7 @@ public:
                 if(vs->decorrelateSrc.get()){
                     sample = decorrelation.getOutputBuffer(speakerChannel)[io.frame()];
                 }else{
-                    sample = vs->getSample();
+                    sample = vs->getSample(io, inputChannel);
                 }
                 setOutput(io,speakerChannel,io.frame(),sample * xFadeGain * spkGain);
             }
@@ -2020,7 +2027,7 @@ public:
             speakerCount += sl.l_speakers.size();
             for(int i = 0; i < sl.l_speakers.size(); i++){
                 //parameterGUI << sl.l_speakers[i].enabled  << sl.l_speakers[i].speakerGain;
-                presets << *sl.l_speakers[i].enabled;
+                //presets << *sl.l_speakers[i].enabled;
                 if((int) sl.l_speakers[i].deviceChannel > highestChannel){
                     highestChannel = sl.l_speakers[i].deviceChannel;
                 }
@@ -2041,7 +2048,10 @@ public:
 //        }
 
         audioIO().channelsOut(highestChannel + 1);
-        audioIO().channelsOutDevice();
+
+        cout << "channelsOutDevice(): " << audioIO().channelsOutDevice() << endl;
+
+
 
         //cout << "Hightst Channel: " << highestChannel << endl;
 
@@ -2168,7 +2178,8 @@ public:
                     if(v->enabled && v->decorrelateSrc.get()){
                         auto inBuffer = decorrelation.getInputBuffer(v->vsBundle.bundleIndex());
                         for(int i = 0; i < BLOCK_SIZE; i++){
-                            inBuffer[i] = v->getSample();
+                            int inputChannel = v->inputChannel.get();
+                            inBuffer[i] = v->getSample(io,inputChannel);
                         }
                     }
                     if(sourcesToDecorrelate.get() == v->vsBundle.bundleIndex()+1){
@@ -2680,6 +2691,7 @@ public:
             ParameterGUI::drawMenu(&src->panMethod);
             ParameterGUI::drawMenu(&src->positionUpdate);
             ParameterGUI::drawMenu(&src->sourceSound);
+            ParameterGUI::drawParameterInt(&src->inputChannel,"");
             ParameterGUI::drawMenu(&src->fileMenu);
 
             ImGui::Separator();
@@ -2798,42 +2810,6 @@ public:
         }
     }
 
-
-//      if (k.alt()) {
-//        switch (k.key()) {
-//        case '1':
-//          presets.storePreset("preset1");
-//          std::cout << "Preset 1 stored." << std::endl;
-//          break;
-//        case '2':
-//          presets.storePreset("preset2");
-//          std::cout << "Preset 2 stored." << std::endl;
-//          break;
-//        case '3':
-//          presets.storePreset("preset3");
-//          std::cout << "Preset 3 stored." << std::endl;
-//          break;
-//        case '4':
-//          presets.storePreset("preset4");
-//          std::cout << "Preset 4 stored." << std::endl;
-//          break;
-//        }
-//      }
-//      else {
-
-//          int a = 1;
-//          string str =to_string(a);
-
-//        if(k.keyAsNumber() < 10 && k.keyAsNumber() >= 0){
-
-//            string presetString = "preset";
-//            presetString.append(to_string(k.keyAsNumber()));
-//            presets.recallPreset(presetString);
-//            std::cout << presetString + " loaded." << std::endl;
-//        }
-//        initPanner();
-//      }
-//    }
 };
 
 
@@ -2841,7 +2817,14 @@ int main(){
     MyApp app;
     AudioDevice::printAll();
     AudioDevice dev = AudioDevice("Aggregate Device").id();
-    app.configureAudio(dev, SAMPLE_RATE, BLOCK_SIZE, 2, 0);
+    //AudioDevice dev = AudioDevice("Soundflower (2ch)").id();
+
+//    app.configureAudio(dev, SAMPLE_RATE, BLOCK_SIZE, 2, 0);
+    app.configureAudio(dev, SAMPLE_RATE, BLOCK_SIZE, 2, INPUT_CHANNELS);
+
+    AudioDevice inDevice = AudioDevice("Soundflower (2ch)").id();
+    app.audioIO().deviceIn(inDevice);
+
 
     // Use this for sphere
     //    app.initAudio(44100, BLOCK_SIZE, -1, -1, AudioDevice("ECHO X5").id());
