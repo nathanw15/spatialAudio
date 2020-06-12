@@ -190,10 +190,10 @@ struct Ramp {
     }
 };
 
-class Event {
+class BPF {
 public:
-    Parameter *eventParam;
-    vector<float> eventBP;
+    Parameter *bpfParam;
+    vector<float> bpfValues;
 
     float initialVal;
 
@@ -207,10 +207,10 @@ public:
     bool triggered = false;
     bool interpolate = true;
 
-    Event(Parameter *param, float initVal, vector<float> bp){
-        eventParam = param;
+    BPF(Parameter *param, float initVal, vector<float> bp){
+        bpfParam = param;
         initialVal = startVal = initVal;
-        eventBP = bp;
+        bpfValues = bp;
     }
 
     void start(unsigned int startSamp){
@@ -218,9 +218,9 @@ public:
         startSample = startSamp;
         bpIdx = 0;
         currentVal = startVal = initialVal;
-        targetVal = eventBP[bpIdx];
-        endSample = startSamp + (eventBP[1]*SAMPLE_RATE);
-        eventParam->set(currentVal);
+        targetVal = bpfValues[bpIdx];
+        endSample = startSamp + (bpfValues[1]*SAMPLE_RATE);
+        bpfParam->set(currentVal);
     }
 
     void next(unsigned int sampleNum){
@@ -235,45 +235,46 @@ public:
             if(sampleNum >= endSample){ // set next breakpoint
                 bpIdx +=2;
 
-                if(bpIdx < eventBP.size()){
+                if(bpIdx < bpfValues.size()){
                     currentVal = startVal = targetVal;
-                    targetVal = eventBP[bpIdx];
+                    targetVal = bpfValues[bpIdx];
                     startSample = endSample;
-                    endSample = startSample + (eventBP[bpIdx+1]*SAMPLE_RATE);
+                    endSample = startSample + (bpfValues[bpIdx+1]*SAMPLE_RATE);
 
-                }else if(bpIdx >= eventBP.size()){ // finished with breakpoints
+                }else if(bpIdx >= bpfValues.size()){ // finished with breakpoints
                     currentVal = targetVal;
                     running = false;
-                    eventParam->set(currentVal);
+                    bpfParam->set(currentVal);
                 }
 
             }else{ // interpolate
                 if(interpolate){
                     currentVal = (((sampleNum - startSample) * (targetVal - startVal)) / (endSample - startSample)) + startVal;
                 }
-                eventParam->set(currentVal);
+                bpfParam->set(currentVal);
             }
         }
     }
 };
 
-class EventGroup;
+class Event;
 
-class TriggerGroup{
+class TriggerEvent{
 public:
-    EventGroup *groupToTrigger;
+    Event *eventToTrigger;
     unsigned int endSample;
     bool running = false;
     bool triggered = false;
 
     float triggerTime;
 
-    TriggerGroup(EventGroup *group, float trigTime){
-        groupToTrigger = group;
+    TriggerEvent(Event *event, float trigTime){
+
+        eventToTrigger = event;
         triggerTime = trigTime;
     }
 
-    void triggerNextGroup();
+    void triggerNextEvent();
 
     void next(unsigned int sampleNum){
 
@@ -285,28 +286,28 @@ public:
 
         if(running){
             if(sampleNum >= endSample){
-                triggerNextGroup();
+                triggerNextEvent();
                 running = false;
             }
         }
     }
 };
 
-class EventGroup{
+class Event{
 public:
-    vector<Event*> events;
-    vector<TriggerGroup*> triggerGroups;
+    vector<BPF*> bpfs;
+    vector<TriggerEvent*> triggerEvents;
     Trigger triggerEvent{"triggerEvent","",""};
 
-    string groupName;
+    string eventName;
 
     vector<pair<Parameter*, float>> initialParams;
     vector<pair<ParameterBool*, float>> initialBools;
     vector<pair<ParameterMenu*, string>> initialMenus;
 
-    EventGroup(string name){
-        groupName = name;
-        triggerEvent.displayName(groupName);
+    Event(string name){
+        eventName = name;
+        triggerEvent.displayName(eventName);
         triggerEvent.registerChangeCallback([&](float val){
 
 //            for(pair<ParameterBool*, float> p: initialBools){
@@ -321,22 +322,22 @@ public:
                 p.first->setCurrent(p.second);
             }
 
-            for(Event *e: events){
+            for(BPF *e: bpfs){
                 e->triggered = true;
             }
 
-            for(TriggerGroup *tg: triggerGroups){
+            for(TriggerEvent *tg: triggerEvents){
                 tg->triggered = true;
             }
         });
     }
 
     void processEvent(unsigned int t){
-        for(Event *e: events){
+        for(BPF *e: bpfs){
             e->next(t);
         }
 
-        for(TriggerGroup *tg: triggerGroups){
+        for(TriggerEvent *tg: triggerEvents){
             tg->next(t);
         }
 
@@ -358,23 +359,23 @@ public:
         initialMenus.push_back(make_pair(param,val));
     }
 
-    void addEvent(Parameter *param, float initialVal, vector<float> breakPoints, bool interpolate = true){
+    void addBPF(Parameter *param, float initialVal, vector<float> breakPoints, bool interpolate = true){
 
-        Event *e = new Event(param, initialVal,breakPoints);
+        BPF *e = new BPF(param, initialVal,breakPoints);
         e->interpolate = interpolate;
-        events.push_back(e);
+        bpfs.push_back(e);
     }
 
-    void triggerGroup(EventGroup *groupToTrigger, float triggerTime){
-        triggerGroups.push_back(new TriggerGroup(groupToTrigger,triggerTime));
+    void addEvent(Event *eventToTrigger, float triggerTime){
+        triggerEvents.push_back(new TriggerEvent(eventToTrigger,triggerTime));
     }
 
 };
 
-vector<EventGroup*> eventGroups;
+vector<Event*> events;
 
-void TriggerGroup::triggerNextGroup(){
-    groupToTrigger->triggerEvent.set(true);
+void TriggerEvent::triggerNextEvent(){
+    eventToTrigger->triggerEvent.set(true);
 }
 
 
@@ -2105,27 +2106,71 @@ public:
 
         VirtualSource *vs = sources[0];
 
-        auto *group = new EventGroup("Group 1");
-        group->addEvent(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
-        group->addEvent(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
-        group->setParameter(&vs->enabled,1.0);
-        group->setMenu(&vs->fileMenu,"shortCount.wav");
+        //Create some events
+        auto *event1 = new Event("Event 1");
+        auto *event2 = new Event("Event 2");
+        auto *event3 = new Event("Event 3");
+        auto *eventSequencer = new Event("Sequence");
 
-        auto *group2 = new EventGroup("Group 2");
-        group2->addEvent(&vs->sourceWidth,0.0,{2.0,7.0});
+        //Add components to event1
+        event1->addBPF(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
+        event1->addBPF(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
+        event1->setParameter(&vs->enabled,1.0);
+        event1->setMenu(&vs->fileMenu,"shortCount.wav");
+        event1->setMenu(&vs->panMethod,"LBAP");
 
-        group->triggerGroup(group2,4.0);
+        //Add components to event2
+        event2->setMenu(&vs->panMethod,"Source Spread");
+        event2->setParameter(&vs->scaleSrcWidth,1.0);
+        event2->addBPF(&vs->sourceWidth,0.0,{2.0,3.0});
 
-        eventGroups.push_back(group);
-        eventGroups.push_back(group2);
-
+        //Create some speaker groups
         auto *speakerGroup = new SpeakerGroup("Group 1");
-        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
-        speakerGroups.push_back(speakerGroup);
+        auto *speakerGroup2 = new SpeakerGroup("Group 2");
 
-        auto *group3 = new EventGroup("Group 3");
-        group3->addEvent(&speakerGroup->gain,1.0,{0.0,5.0});
-        eventGroups.push_back(group3);
+        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
+        speakerGroup2->addSpeakersByChannel({1,3,5,7,9,11,13,15,17});
+
+        //Register the speaker groups
+        speakerGroups.push_back(speakerGroup);
+        speakerGroups.push_back(speakerGroup2);
+
+        //Add gain automation of speaker groups 1 and 2 to event 3
+        event3->addBPF(&speakerGroup->gain,1.0,{0.0,5.0});
+        event3->addBPF(&speakerGroup2->gain,1.0,{0.0,3.0,1.0,3.0});
+
+        //Add events to eventSequencer with the start time in seconds
+        eventSequencer->addEvent(event1,0.0);
+        eventSequencer->addEvent(event2,4.0);
+        eventSequencer->addEvent(event3,5.0);
+
+        //Register the events
+        events.push_back(event1);
+        events.push_back(event2);
+        events.push_back(event3);
+        events.push_back(eventSequencer);
+
+//        auto *event1 = new Event("Event 1");
+//        event1->addBPF(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
+//        event1->addBPF(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
+//        event1->setParameter(&vs->enabled,1.0);
+//        event1->setMenu(&vs->fileMenu,"shortCount.wav");
+
+//        auto *event2 = new Event("Event 2");
+//        event2->addBPF(&vs->sourceWidth,0.0,{2.0,7.0});
+
+//        event1->addEvent(event2,4.0);
+
+//        events.push_back(event1);
+//        events.push_back(event2);
+
+//        auto *speakerGroup = new SpeakerGroup("Group 1");
+//        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
+//        speakerGroups.push_back(speakerGroup);
+
+//        auto *event3 = new Event("Event 3");
+//        event3->addBPF(&speakerGroup->gain,1.0,{0.0,5.0});
+//        events.push_back(event3);
 
 
 
@@ -2193,7 +2238,7 @@ public:
 
                 ++t;
 
-                for(EventGroup *e: eventGroups){
+                for(Event *e: events){
                     e->processEvent(t);
                 }
 
@@ -2331,7 +2376,6 @@ public:
                 for (int speaker = 0; speaker < sl.l_speakers.size(); speaker++) {
                     if(!sl.l_speakers[speaker].isPhantom){
                         int deviceChannel = sl.l_speakers[speaker].deviceChannel;
-
                         if(deviceChannel > 1 && deviceChannel < io.channelsOut()){
                             for (int i = 0; i < io.framesPerBuffer(); i++) {
                                 if(deviceChannel % 2 == 0){
@@ -2344,7 +2388,6 @@ public:
                     }
                 }
             }
-
         }
 
 
@@ -2489,6 +2532,7 @@ public:
             if (ImGui::Button("Close")){
                 showLoudspeakerGroups = false;
             }
+            ImGui::Separator();
             for(SpeakerGroup *sg: speakerGroups){
                 ImGui::Text(sg->groupName.c_str());
                 ParameterGUI::drawParameterBool(&sg->enable);
@@ -2499,36 +2543,29 @@ public:
         }
 
         if(showEvents){
-            ParameterGUI::beginPanel("Event Groups");
+            ParameterGUI::beginPanel("Events");
             if (ImGui::Button("Close")){
                 showEvents = false;
             }
-            for(EventGroup *eg: eventGroups){
+            ImGui::Separator();
+            for(Event *eg: events){
                 ParameterGUI::drawTrigger(&eg->triggerEvent);
             }
             ParameterGUI::endPanel();
         }
 
 
-//        ImGui::Begin("My First Tool", &my_tool_active, ImGuiWindowFlags_MenuBar);
-//        if (ImGui::BeginMenuBar())
-//        {
-//            if (ImGui::BeginMenu("File"))
-//            {
-//                if (ImGui::MenuItem("Open..", "Ctrl+O")) { /* Do stuff */ }
-//                if (ImGui::MenuItem("Save", "Ctrl+S"))   { /* Do stuff */ }
-//                if (ImGui::MenuItem("Close", "Ctrl+W"))  { my_tool_active = false; }
-//                ImGui::EndMenu();
-//            }
-//            ImGui::EndMenuBar();
-//        }
-//        ImGui::End();
-
-
         ParameterGUI::beginPanel("Main");
 
         // ImGui::BeginMenuBar();
         if (ImGui::BeginMainMenuBar()){
+
+            if(ImGui::BeginMenu("File")){
+                if(ImGui::MenuItem("Quit")){
+                    exit(0);
+                }
+                ImGui::EndMenu();
+            }
 
             if (ImGui::BeginMenu("Window"))
             {
@@ -2617,10 +2654,6 @@ public:
                 values[i] = value;
             }
 
-//            const float values[5] = { 0.5f, 0.20f, 0.80f, 0.60f, 0.25f };
-
-
-
             ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
             //ImGui::PlotHistogram()
 
@@ -2637,21 +2670,6 @@ public:
         }
 
         ImGui::Separator();
-
-//        if(ImGui::TreeNode("Loudspeakers")){
-
-//            ParameterGUI::drawMenu(&speakerDensity);
-//            ParameterGUI::drawParameterBool(&drawLabels);
-//            for(SpeakerLayer sl: layers){
-//                for(SpeakerV sv: sl.l_speakers){
-//                    ParameterGUI::drawParameterBool(sv.enabled);
-//                    ParameterGUI::drawParameter(sv.speakerGain);
-//                }
-//            }
-//            ImGui::TreePop();
-//        }
-
-
         ParameterGUI::endPanel();
 
         if(showLoudspeakers){
@@ -2659,6 +2677,7 @@ public:
             if (ImGui::Button("Close")){
                 showLoudspeakers = false;
             }
+            ImGui::Separator();
 
             ParameterGUI::drawMenu(&speakerDensity);
             ParameterGUI::drawParameterBool(&drawLabels);
@@ -2668,8 +2687,6 @@ public:
                     ParameterGUI::drawParameter(sv.speakerGain);
                 }
             }
-
-
             ParameterGUI::endPanel();
         }
 
@@ -2679,6 +2696,7 @@ public:
             if (ImGui::Button("Close")){
                 showVirtualSources = false;
             }
+            ImGui::Separator();
             ParameterGUI::drawParameterInt(&displaySource,"");
 
             VirtualSource *src = sources[displaySource.get()];
@@ -2732,10 +2750,8 @@ public:
             ParameterGUI::drawParameter(&src->sourceWidth);
             ParameterGUI::drawParameterBool(&src->scaleSrcWidth);
 
-
             ImGui::Separator();
             ParameterGUI::endPanel();
-
         }
 
 //        ParameterGUI::beginPanel("Loudspeakers");
