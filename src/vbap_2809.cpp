@@ -136,6 +136,10 @@ bool showVirtualSources = false;
 bool showEvents = false;
 bool showLoudspeakerGroups = false;
 bool showLoudspeakers = false;
+bool showRecorder = false;
+bool showSetAllSources = false;
+bool showXFade = false;
+bool showDecorrelation = false;
 
 struct Ramp {
 
@@ -2555,9 +2559,105 @@ public:
         }
 
 
-        ParameterGUI::beginPanel("Main");
+        if(showRecorder){
+            ParameterGUI::beginPanel("Record");
+            if (ImGui::Button("Close")){
+                showRecorder = false;
+            }
+            ImGui::Separator();
+            SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder, audioIO().framesPerSecond(), audioIO().channelsOut());
+            ParameterGUI::endPanel();
+        }
 
-        // ImGui::BeginMenuBar();
+
+        if(showXFade){
+            ParameterGUI::beginPanel("Cross Fade Ch. 1 and Ch. 2");
+            if (ImGui::Button("Close")){
+                showXFade = false;
+            }
+            ImGui::Separator();
+            ParameterGUI::drawParameterBool(&xFadeCh1_2);
+            ParameterGUI::drawParameter(&xFadeValue);
+            ParameterGUI::endPanel();
+        }
+
+
+        if(showDecorrelation){
+            ParameterGUI::beginPanel("Decorrelation");
+            if (ImGui::Button("Close")){
+                showDecorrelation = false;
+            }
+            ImGui::Separator();
+            ParameterGUI::drawMenu(&decorrelationMethod);
+            ParameterGUI::drawTrigger(&generateRandDecorSeed);
+            ParameterGUI::drawParameter(&maxJump);
+            ParameterGUI::drawParameter(&phaseFactor);
+            ParameterGUI::drawParameter(&deltaFreq);
+            ParameterGUI::drawParameter(&maxFreqDev);
+            ParameterGUI::drawParameter(&maxTau);
+            ParameterGUI::drawParameter(&startPhase);
+            ParameterGUI::drawParameter(&phaseDev);
+            ParameterGUI::endPanel();
+        }
+
+        if(showSetAllSources){
+            ParameterGUI::beginPanel("Set All Sources");
+            if (ImGui::Button("Close")){
+                showSetAllSources = false;
+            }
+            ImGui::Separator();
+            ParameterGUI::drawParameterBool(&setAllEnabled);
+            ParameterGUI::drawParameterBool(&setAllDecorrelate);
+
+            ParameterGUI::drawMenu(&setAllPanMethod);
+            ParameterGUI::drawMenu(&setAllPosUpdate);
+            ParameterGUI::drawMenu(&setAllSoundFileIdx);
+
+            ImGui::Separator();
+            ImGui::Text("Sample Players");
+            ParameterGUI::drawParameter(&setPlayerPhase);
+            ParameterGUI::drawParameter(&playerRateMultiplier);
+            ParameterGUI::drawParameterBool(&useRateMultiplier);
+
+
+            ImGui::Separator();
+
+            ImGui::Text("Source Phases");
+            ImVec2 size;
+            size.x = 200;
+            size.y = 100;
+
+            float values[NUM_SOURCES] = {};
+
+            for(int i = 0; i < NUM_SOURCES; i++){
+                VirtualSource *vs = sources[i];
+                float value = 0.0;
+                if(vs->enabled.get()){
+                    value = sources[i]->getSamplePlayerPhase();
+                }
+                values[i] = value;
+            }
+
+            ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
+            //ImGui::PlotHistogram()
+
+            ImGui::Separator();
+            ImGui::Text("Positions");
+            ParameterGUI::drawParameter(&setAllAzimuth);
+            ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
+            ParameterGUI::drawParameter(&setAllElevation);
+            ParameterGUI::drawParameter(&setAllEleOffsetScale);
+
+            ParameterGUI::drawTrigger(&resetPosOscPhase);
+
+            ParameterGUI::endPanel();
+        }
+
+
+
+
+//        ParameterGUI::beginPanel("Main");
+
         if (ImGui::BeginMainMenuBar()){
 
             if(ImGui::BeginMenu("File")){
@@ -2582,11 +2682,26 @@ public:
                 if (ImGui::MenuItem("Loudspeakers")){
                     showLoudspeakers = true;
                 }
+                if (ImGui::MenuItem("Recording")){
+                    showRecorder = true;
+                }
+                if (ImGui::MenuItem("Set All Sources")){
+                    showSetAllSources = true;
+                }
+                if (ImGui::MenuItem("Cross Fade Ch. 1 and 2")){
+                    showXFade = true;
+                }
+                if (ImGui::MenuItem("Decorrelation")){
+                    showDecorrelation = true;
+                }
+
                 ImGui::EndMenu();
             }
            // ImGui::EndMenuBar();
             ImGui::EndMainMenuBar();
         }
+
+        ParameterGUI::beginPanel("Main");
 
         ParameterGUI::drawParameterBool(&soundOn);
         ParameterGUI::drawParameter(&masterGain);
@@ -2595,81 +2710,50 @@ public:
 
         ImGui::Separator();
 
-        if(ImGui::TreeNode("Record")){
-            SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder, audioIO().framesPerSecond(), audioIO().channelsOut());
-            ImGui::TreePop();
-        }
+//        if(ImGui::TreeNode("Set All Sources")){
+//            ParameterGUI::drawParameterBool(&setAllEnabled);
+//            ParameterGUI::drawParameterBool(&setAllDecorrelate);
 
-        ImGui::Separator();
-//        ImGui::Text("Cross Fade Ch. 1 and Ch. 2");
-        if(ImGui::TreeNode("Cross Fade Ch. 1 and Ch. 2")){
-            ParameterGUI::drawParameterBool(&xFadeCh1_2);
-            ParameterGUI::drawParameter(&xFadeValue);
-            ImGui::TreePop();
-        }
+//            ParameterGUI::drawMenu(&setAllPanMethod);
+//            ParameterGUI::drawMenu(&setAllPosUpdate);
+//            ParameterGUI::drawMenu(&setAllSoundFileIdx);
 
-        ImGui::Separator();
-//        ImGui::Text("Decorrelation");
-        if(ImGui::TreeNode("Decorrelation")){
-            ParameterGUI::drawMenu(&decorrelationMethod);
-            ParameterGUI::drawTrigger(&generateRandDecorSeed);
-            ParameterGUI::drawParameter(&maxJump);
-            ParameterGUI::drawParameter(&phaseFactor);
-            ParameterGUI::drawParameter(&deltaFreq);
-            ParameterGUI::drawParameter(&maxFreqDev);
-            ParameterGUI::drawParameter(&maxTau);
-            ParameterGUI::drawParameter(&startPhase);
-            ParameterGUI::drawParameter(&phaseDev);
-            ImGui::TreePop();
-        }
+//            ImGui::Separator();
+//            ImGui::Text("Sample Players");
+//            ParameterGUI::drawParameter(&setPlayerPhase);
+//            ParameterGUI::drawParameter(&playerRateMultiplier);
+//            ParameterGUI::drawParameterBool(&useRateMultiplier);
 
-        ImGui::Separator();
+//            ImVec2 size;// = ImGui::GetItemRectSize();
+//            size.x = 200;
+//            size.y = 100;
 
-        if(ImGui::TreeNode("Set All Sources")){
-            ParameterGUI::drawParameterBool(&setAllEnabled);
-            ParameterGUI::drawParameterBool(&setAllDecorrelate);
+//            float values[NUM_SOURCES] = {};// = { 0.5f, 0.20f, 0.80f, 0.60f, 0.25f };
 
-            ParameterGUI::drawMenu(&setAllPanMethod);
-            ParameterGUI::drawMenu(&setAllPosUpdate);
-            ParameterGUI::drawMenu(&setAllSoundFileIdx);
+//            for(int i = 0; i < NUM_SOURCES; i++){
+//                VirtualSource *vs = sources[i];
+//                float value = 0.0;
+//                if(vs->enabled.get()){
+//                    value = sources[i]->getSamplePlayerPhase();
+//                }
+//                values[i] = value;
+//            }
 
-            ImGui::Separator();
-            ImGui::Text("Sample Players");
-            ParameterGUI::drawParameter(&setPlayerPhase);
-            ParameterGUI::drawParameter(&playerRateMultiplier);
-            ParameterGUI::drawParameterBool(&useRateMultiplier);
+//            ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
+//            //ImGui::PlotHistogram()
 
-            ImVec2 size;// = ImGui::GetItemRectSize();
-            size.x = 200;
-            size.y = 100;
+//            ImGui::Separator();
+//            ImGui::Text("Positions");
+//            ParameterGUI::drawParameter(&setAllAzimuth);
+//            ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
+//            ParameterGUI::drawParameter(&setAllElevation);
+//            ParameterGUI::drawParameter(&setAllEleOffsetScale);
 
-            float values[NUM_SOURCES] = {};// = { 0.5f, 0.20f, 0.80f, 0.60f, 0.25f };
+//            ParameterGUI::drawTrigger(&resetPosOscPhase);
 
-            for(int i = 0; i < NUM_SOURCES; i++){
-                VirtualSource *vs = sources[i];
-                float value = 0.0;
-                if(vs->enabled.get()){
-                    value = sources[i]->getSamplePlayerPhase();
-                }
-                values[i] = value;
-            }
+//            ImGui::TreePop();
+//        }
 
-            ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
-            //ImGui::PlotHistogram()
-
-            ImGui::Separator();
-            ImGui::Text("Positions");
-            ParameterGUI::drawParameter(&setAllAzimuth);
-            ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
-            ParameterGUI::drawParameter(&setAllElevation);
-            ParameterGUI::drawParameter(&setAllEleOffsetScale);
-
-            ParameterGUI::drawTrigger(&resetPosOscPhase);
-
-            ImGui::TreePop();
-        }
-
-        ImGui::Separator();
         ParameterGUI::endPanel();
 
         if(showLoudspeakers){
