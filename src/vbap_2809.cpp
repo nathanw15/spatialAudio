@@ -4,6 +4,7 @@
 #include "Gamma/Gamma.h"
 #include "Gamma/SamplePlayer.h"
 #include "Gamma/Noise.h"
+#include "Gamma/SoundFile.h"
 
 #include "al/app/al_App.hpp"
 #include "al/graphics/al_Graphics.hpp"
@@ -227,6 +228,7 @@ public:
         bpfParam->set(currentVal);
     }
 
+
     void next(unsigned int sampleNum){
 
         if(triggered){
@@ -394,10 +396,155 @@ void wrapValues(float &val){
     }
 }
 
+class WindowPhase{
+public:
+    float *windowBuffer;
+    //gam::HANN han;
+
+    //gam::LFO hann;
+    int windowBufferLength;
+    int windowLength;
+
+    int windowStart = 0;
+     int windowEnd = 0;
+   int readPosition = 0;
+
+    int increment;
+
+    float *audioBuffer;
+    int audioBufferLength;
+
+    gam::SoundFile sf;
+
+    ParameterInt inc{"inc","",0,"",0,10000};
+
+
+    WindowPhase(int start, int winLength, int inc, int windowBuffLen = 1024){
+
+        const char * path = "src/sounds/shortCount.wav";
+        sf.path(path);
+        bool opened = sf.openRead();
+
+        cout << "Opened: " << opened << endl;
+
+
+
+        audioBuffer = new float[sf.samples()];
+
+        audioBufferLength = sf.samples();
+
+        int read = sf.readAll(audioBuffer);
+
+        cout << "read: " << read << endl;
+
+        sf.close();
+
+        windowBufferLength = windowBuffLen;
+        windowBuffer = new float[windowBufferLength];//malloc(windowBuffLen,sizeof(float));
+        windowLength = winLength;
+
+        for(int i = 0; i < windowBufferLength; i++){
+            windowBuffer[i] = 0.5 * (1.0 - cos(2.0*M_PI*((float)i/((float)windowBufferLength-1.0))));
+        }
+
+        cout << windowBuffer[512] << endl;
+
+        setStartPos(start);
+        //audioBuffer = audioBuff;
+        increment = inc;
+
+         int.registerChangeCallback([&](float val){
+             increment = val;//DONT DO THIS, SET DIRECTLY
+         });
+    }
+
+    void setStartPos(int pos){
+        while(pos >= audioBufferLength ){
+            pos -= audioBufferLength;
+        }
+        while(pos < 0){
+            pos += audioBufferLength;
+        }
+        windowStart = pos;
+        windowEnd = windowStart + windowLength;
+    }
+
+//    float getWindowGain(){
+//        if(readPosition > windowEnd){
+//            windowStart += increment;
+//            wrapPosition(windowStart);
+//            windowEnd += increment;
+//            wrapPosition(windowEnd);
+//            readPosition = windowStart;
+
+//            return windowBuffer[0];
+
+//        }else{
+//            int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
+//                    readPosition++;
+//            return windowBuffer[windowIdx];
+
+//        }
+//    }
+
+    void wrapPosition(int &value){
+        if(value >= audioBufferLength){
+            value -= audioBufferLength;
+        }else if (value < 0){
+            value += audioBufferLength;
+        }
+    }
+
+
+    float getWindowPhase(){
+
+        float gain = 0.0;
+
+        if(readPosition >= audioBufferLength){
+            readPosition -= audioBufferLength;
+            windowStart += increment;
+            windowEnd += increment;
+            wrapPosition(windowStart);
+            wrapPosition(windowEnd);
+        }
+
+
+//        wrapPosition(windowStart);
+//        wrapPosition(windowEnd);
+
+
+        if(readPosition >= windowStart && readPosition <= windowEnd){
+            int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
+            gain = windowBuffer[windowIdx];
+            //cout <<"readPos: " << readPosition << "gain: " << gain << endl;
+        }else if(readPosition >= windowStart && readPosition > windowEnd){
+            if(windowEnd < windowStart){// read at end with window wrapped
+                int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowLength);
+                gain = windowBuffer[windowIdx];
+            }
+        }else if(readPosition < windowStart && readPosition < windowEnd){
+            if(windowEnd < windowStart){ // read at beginning with window wrapped
+                int windowIdx = ((readPosition + (audioBufferLength - windowStart)) * (windowBufferLength)) / (windowLength);
+                gain = windowBuffer[windowIdx];
+            }
+        }
+        float windowedSample = audioBuffer[readPosition] * gain;
+        readPosition++;
+        return windowedSample;
+    }
+
+
+
+
+};
+
+
 class VirtualSource {
 public:
 
     //std::vector<SpeakerV*> enabledSpeakersVS;
+
+    WindowPhase wp{0,30000,10000};
 
     gam::SamplePlayer<> samplePlayer;
     gam::NoisePink<> noise;
@@ -406,6 +553,7 @@ public:
     gam::Impulse<> impulse;
     gam::Saw<> saw;
     gam::Square<> square;
+
 
     Parameter posOscPhase{"posOscPhase","", 0.0,"",0.0,1.0};
     Parameter posOscFreq{"posOscFreq","",1.0,"",0.0,5.0};
@@ -469,6 +617,8 @@ public:
 
     VirtualSource(){
 
+
+
         enabled.displayName("Enabled");
         mute.displayName("Mute");
         decorrelateSrc.displayName("Decorrelate");
@@ -522,10 +672,11 @@ public:
         positionOsc.freq(posOscFreq.get());
 
         panMethod.setElements(panningMethodNames);
-        sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn"});
+        sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"});
         positionUpdate.setElements(posUpdateNames);
         fileMenu.setElements(files);
         samplePlayer.load("src/sounds/count.wav");
+
         fileMenu.setCurrent("count.wav");
 //        samplePlayerRate.set(1.0 + (.002 * vsBundle.bundleIndex()));
         samplePlayer.rate(1.0);
@@ -734,6 +885,9 @@ public:
             break;
         case 6:
             sample = io.in(channel,io.frame());
+            break;
+        case 7:
+            sample = wp.getWindowPhase();
             break;
         default:
             sample = 0.0;
