@@ -15,7 +15,7 @@
 #include "al/ui/al_Parameter.hpp"
 #include "al/ui/al_ParameterServer.hpp"
 #include "al/ui/al_ControlGUI.hpp"
-//#include "al/ui/al_HtmlInterfaceServer.hpp"
+#include "al/ui/al_HtmlInterfaceServer.hpp"
 
 #include "al_ext/spatialaudio/al_Decorrelation.hpp"
 //#include "al_ext/soundfile/al_SoundfileBufferedRecord.hpp"
@@ -61,6 +61,8 @@ SearchPaths searchpaths;
 vector<string> files;
 vector<string> posUpdateNames{"Static", "Trajectory", "Moving","Sine"};
 vector<string> panningMethodNames{"LBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
+vector<string> sourceSoundNames{"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"};
+
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
 
@@ -75,10 +77,16 @@ Parameter setAllAzimuth("setAllAzimuth","",2.9,"",-1.0*M_PI,M_PI);
 Parameter setAllAzimuthOffsetScale("setAllAzimuthOffsetScale","",0.f,"",-1.0,1.0);
 Parameter setAllElevation("setAllElevation","",0.0,"",-1.0*M_PI_2,M_PI_2);
 Parameter setAllEleOffsetScale{"setAllEleOffsetScale","",0.0,"",-1.0,1.0};
+ParameterMenu setAllSourceSounds("setAllSourceSounds","",0,"");
+
+ParameterBool setAllMute("setAllMute","",0.0);
+Parameter setAllGain("setAllGain","",0.0,"",0.0,1.0);
+ParameterInt setAllInputChannel("setAllInputChannel","",0,"",0,INPUT_CHANNELS-1);
 
 
 ParameterBool useRateMultiplier("useRateMultiplier","",0.0);
-Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,44100.0);
+//Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,44100.0);
+Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,1.0);
 Parameter setAllDurations("setAllDurations","",0.0,"",0.0,10.f);
 
 Trigger triggerAllRamps("triggerAllRamps","","");
@@ -812,7 +820,7 @@ public:
         panMethod.displayName("Method");
         positionUpdate.displayName("Position Update");
         sourceSound.displayName("Sound");
-        fileMenu.displayName("SoundFile Menu");
+        fileMenu.displayName("Sound File");
         inputChannel.displayName("Audio In Ch.");
 
         samplePlayerRate.displayName("Rate");
@@ -857,7 +865,8 @@ public:
         positionOsc.freq(posOscFreq.get());
 
         panMethod.setElements(panningMethodNames);
-        sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"});
+        //sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"});
+        sourceSound.setElements(sourceSoundNames);
         positionUpdate.setElements(posUpdateNames);
         fileMenu.setElements(files);
         samplePlayer.load("src/sounds/count.wav");
@@ -975,7 +984,7 @@ public:
         fileMenu.registerChangeCallback([&](float val){
             samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
             soundFileDuration.max(samplePlayer.period());
-            setPlayerPhase.max(samplePlayer.frames());
+            //setPlayerPhase.max(samplePlayer.frames());
 //            bool didLoad = samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
 //            if(didLoad){
 //                cout << "Did Load " << samplePlayer.period()  << endl;
@@ -1329,8 +1338,8 @@ public:
     Font font;
     Mesh fontMesh;
 
-//    std::string pathToInterfaceJs = "interface.js";
-//    HtmlInterfaceServer htmlServer{pathToInterfaceJs};
+    std::string pathToInterfaceJs = "interface.js";
+    HtmlInterfaceServer htmlServer{pathToInterfaceJs};
 
     OutputRecorder soundFileRecorder;
 
@@ -1366,17 +1375,22 @@ public:
             sources.push_back(newVS);
             //parameterGUI << newVS->vsBundle;
             parameterServer() << newVS->vsBundle;
+            //parameterServer() << newVS->sourceGain << newVS->centerAzi << newVS->centerEle;
         }
 
-        parameterServer() << soundOn << resetPosOscPhase << sampleWise
-                          << useDelay << masterGain << maxDelay
-                          << combineAllChannels << setAllDecorrelate
-                          << decorrelationMethod << speakerDensity << drawLabels
-                          << xFadeCh1_2 << xFadeValue << generateRandDecorSeed
-                          << maxJump << phaseFactor << deltaFreq << maxFreqDev
-                          << maxTau << startPhase << phaseDev;
+//        parameterServer() << soundOn << resetPosOscPhase
+//                          <<  masterGain << setAllDecorrelate
+//                          << decorrelationMethod << speakerDensity << drawLabels
+//                          << xFadeCh1_2 << xFadeValue << generateRandDecorSeed
+//                          << maxJump << phaseFactor << deltaFreq << maxFreqDev
+//                          << maxTau << startPhase << phaseDev;
 
-        //htmlServer << parameterServer();
+        //example with set all
+        parameterServer() << setAllGain << setPlayerPhase << playerRateMultiplier
+                          << setAllAzimuth << setAllAzimuthOffsetScale << setAllElevation
+                          << setAllEleOffsetScale;
+
+        htmlServer << parameterServer();
 
         soundOn.displayName("Sound On");
         masterGain.displayName("Master Gain");
@@ -1390,6 +1404,12 @@ public:
         setAllPanMethod.displayName("Method");
         setAllPosUpdate.displayName("Position Update");
         setAllSoundFileIdx.displayName("Sound File");
+        setAllSourceSounds.displayName("Sound");
+
+        setAllMute.displayName("Mute");
+        setAllGain.displayName("Gain");
+        setAllInputChannel.displayName("Audio In Ch.");
+
 
         setPlayerPhase.displayName("Phase");
         playerRateMultiplier.displayName("Rate Multiplier");
@@ -1426,9 +1446,33 @@ public:
         setAllPanMethod.setElements(panningMethodNames);
         setAllPosUpdate.setElements(posUpdateNames);
         setAllSoundFileIdx.setElements(files);
+        setAllSourceSounds.setElements(sourceSoundNames);
         speakerDensity.setElements(spkDensityMenuNames);
         decorrelationMethod.setElements(decorMethodMenuNames);
 
+        setAllMute.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->mute.set(val);
+            }
+        });
+
+        setAllGain.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->sourceGain.set(val);
+            }
+        });
+
+        setAllInputChannel.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->inputChannel.set(val);
+            }
+        });
+
+        setAllSourceSounds.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->sourceSound.set(val);
+            }
+        });
 
 //        record.registerChangeCallback([&](float val){
 //            if(val == 0.0){
@@ -1494,17 +1538,29 @@ public:
         });
 
         setPlayerPhase.registerChangeCallback([&](float val){
-            VirtualSource *firstSource = sources[0];
-            int firstPos = firstSource->samplePlayer.pos();
+            //VirtualSource *firstSource = sources[0];
+            //int firstPos = firstSource->samplePlayer.pos();
             for(VirtualSource *v: sources){
                 v->samplePlayer.reset();
                 int idx = v->vsBundle.bundleIndex();
-                int newPos = firstPos + (val*idx);
-                if(newPos >= v->samplePlayer.frames()){
+                //int newPos = firstPos + (val*idx);
+                int newPos = val*v->samplePlayer.frames()*idx;
+                while(newPos >= v->samplePlayer.frames()){
                     newPos -= v->samplePlayer.frames();
                 }
                 v->samplePlayer.pos(newPos);
             }
+//            VirtualSource *firstSource = sources[0];
+//            int firstPos = firstSource->samplePlayer.pos();
+//            for(VirtualSource *v: sources){
+//                v->samplePlayer.reset();
+//                int idx = v->vsBundle.bundleIndex();
+//                int newPos = firstPos + (val*idx);
+//                if(newPos >= v->samplePlayer.frames()){
+//                    newPos -= v->samplePlayer.frames();
+//                }
+//                v->samplePlayer.pos(newPos);
+//            }
         });
 
         setAllDecorrelate.registerChangeCallback([&](float val){
@@ -2676,9 +2732,6 @@ public:
 //                }
 //            }
 
-
-
-
         }
 
 //        for(SpeakerLayer sl:layers){
@@ -2690,9 +2743,6 @@ public:
             mPeaks[i].store(0);
         }
 
-//        for (int i = 0; i < speakers.size(); i++) {
-//            mPeaks[i].store(0);
-//        }
         for(SpeakerLayer sl:layers){
             for (int speaker = 0; speaker < sl.l_speakers.size(); speaker++) {
                 if(!sl.l_speakers[speaker].isPhantom){
@@ -2869,7 +2919,6 @@ public:
 
         imguiBeginFrame();
 
-
         if(showLoudspeakerGroups){
             ParameterGUI::beginPanel("Speaker Groups");
             if (ImGui::Button("Close")){
@@ -2897,7 +2946,6 @@ public:
             ParameterGUI::endPanel();
         }
 
-
         if(showRecorder){
             ParameterGUI::beginPanel("Record");
             if (ImGui::Button("Close")){
@@ -2907,7 +2955,6 @@ public:
             SoundFileRecordGUI::drawRecorderWidget(&soundFileRecorder, audioIO().framesPerSecond(), audioIO().channelsOut());
             ParameterGUI::endPanel();
         }
-
 
         if(showXFade){
             ParameterGUI::beginPanel("Cross Fade Ch. 1 and Ch. 2");
@@ -2919,7 +2966,6 @@ public:
             ParameterGUI::drawParameter(&xFadeValue);
             ParameterGUI::endPanel();
         }
-
 
         if(showDecorrelation){
             ParameterGUI::beginPanel("Decorrelation");
@@ -2944,58 +2990,64 @@ public:
             if (ImGui::Button("Close")){
                 showSetAllSources = false;
             }
+
+
+            //        ParameterBool setAllMute("setAllMute","",0.0);
+            //        Parameter setAllGain("setAllGain","",0.0,"",0.0,1.0);
+            //        ParameterInt setAllInputChannel("setAllInputChannel","",0,"",0,INPUT_CHANNELS-1);
+
+
             ImGui::Separator();
             ParameterGUI::drawParameterBool(&setAllEnabled);
+            ParameterGUI::drawParameterBool(&setAllMute);
             ParameterGUI::drawParameterBool(&setAllDecorrelate);
-
+            ParameterGUI::drawParameter(&setAllGain);
             ParameterGUI::drawMenu(&setAllPanMethod);
             ParameterGUI::drawMenu(&setAllPosUpdate);
+            ParameterGUI::drawMenu(&setAllSourceSounds);
+            ParameterGUI::drawParameterInt(&setAllInputChannel,"");
             ParameterGUI::drawMenu(&setAllSoundFileIdx);
 
             ImGui::Separator();
-            ImGui::Text("Sample Players");
-            ParameterGUI::drawParameter(&setPlayerPhase);
-            ParameterGUI::drawParameter(&playerRateMultiplier);
-            ParameterGUI::drawParameterBool(&useRateMultiplier);
+            if(ImGui::TreeNode("Sample Players")){
+                ParameterGUI::drawParameter(&setPlayerPhase);
+                ParameterGUI::drawParameter(&playerRateMultiplier);
+                ParameterGUI::drawParameterBool(&useRateMultiplier);
 
+                ImGui::Separator();
 
-            ImGui::Separator();
+                ImGui::Text("Source Phases");
+                ImVec2 size;
+                size.x = 200;
+                size.y = 100;
 
-            ImGui::Text("Source Phases");
-            ImVec2 size;
-            size.x = 200;
-            size.y = 100;
+                float values[NUM_SOURCES] = {};
 
-            float values[NUM_SOURCES] = {};
-
-            for(int i = 0; i < NUM_SOURCES; i++){
-                VirtualSource *vs = sources[i];
-                float value = 0.0;
-                if(vs->enabled.get()){
-                    value = sources[i]->getSamplePlayerPhase();
+                for(int i = 0; i < NUM_SOURCES; i++){
+                    VirtualSource *vs = sources[i];
+                    float value = 0.0;
+                    if(vs->enabled.get()){
+                        value = sources[i]->getSamplePlayerPhase();
+                    }
+                    values[i] = value;
                 }
-                values[i] = value;
+
+                ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
+                ImGui::TreePop();
             }
-
-            ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
-            //ImGui::PlotHistogram()
-
             ImGui::Separator();
-            ImGui::Text("Positions");
-            ParameterGUI::drawParameter(&setAllAzimuth);
-            ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
-            ParameterGUI::drawParameter(&setAllElevation);
-            ParameterGUI::drawParameter(&setAllEleOffsetScale);
+            if(ImGui::TreeNode("Positions")){
+                ParameterGUI::drawParameter(&setAllAzimuth);
+                ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
+                ParameterGUI::drawParameter(&setAllElevation);
+                ParameterGUI::drawParameter(&setAllEleOffsetScale);
 
-            ParameterGUI::drawTrigger(&resetPosOscPhase);
-
+                //ParameterGUI::drawTrigger(&resetPosOscPhase);
+                ImGui::TreePop();
+            }
             ParameterGUI::endPanel();
         }
 
-
-
-
-//        ParameterGUI::beginPanel("Main");
 
         if (ImGui::BeginMainMenuBar()){
 
@@ -3006,8 +3058,7 @@ public:
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu("Window"))
-            {
+            if (ImGui::BeginMenu("Window")){
 
                 if (ImGui::MenuItem("Virtual Sources")) {
                     showVirtualSources = true;
@@ -3033,66 +3084,17 @@ public:
                 if (ImGui::MenuItem("Decorrelation")){
                     showDecorrelation = true;
                 }
-
                 ImGui::EndMenu();
             }
-           // ImGui::EndMenuBar();
             ImGui::EndMainMenuBar();
         }
 
         ParameterGUI::beginPanel("Main");
-
         ParameterGUI::drawParameterBool(&soundOn);
         ParameterGUI::drawParameter(&masterGain);
         ParameterGUI::drawParameterBool(&stereoOutput);
         ParameterGUI::drawParameter(&stereoOutputGain);
-
-        ImGui::Separator();
-
-//        if(ImGui::TreeNode("Set All Sources")){
-//            ParameterGUI::drawParameterBool(&setAllEnabled);
-//            ParameterGUI::drawParameterBool(&setAllDecorrelate);
-
-//            ParameterGUI::drawMenu(&setAllPanMethod);
-//            ParameterGUI::drawMenu(&setAllPosUpdate);
-//            ParameterGUI::drawMenu(&setAllSoundFileIdx);
-
-//            ImGui::Separator();
-//            ImGui::Text("Sample Players");
-//            ParameterGUI::drawParameter(&setPlayerPhase);
-//            ParameterGUI::drawParameter(&playerRateMultiplier);
-//            ParameterGUI::drawParameterBool(&useRateMultiplier);
-
-//            ImVec2 size;// = ImGui::GetItemRectSize();
-//            size.x = 200;
-//            size.y = 100;
-
-//            float values[NUM_SOURCES] = {};// = { 0.5f, 0.20f, 0.80f, 0.60f, 0.25f };
-
-//            for(int i = 0; i < NUM_SOURCES; i++){
-//                VirtualSource *vs = sources[i];
-//                float value = 0.0;
-//                if(vs->enabled.get()){
-//                    value = sources[i]->getSamplePlayerPhase();
-//                }
-//                values[i] = value;
-//            }
-
-//            ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
-//            //ImGui::PlotHistogram()
-
-//            ImGui::Separator();
-//            ImGui::Text("Positions");
-//            ParameterGUI::drawParameter(&setAllAzimuth);
-//            ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
-//            ParameterGUI::drawParameter(&setAllElevation);
-//            ParameterGUI::drawParameter(&setAllEleOffsetScale);
-
-//            ParameterGUI::drawTrigger(&resetPosOscPhase);
-
-//            ImGui::TreePop();
-//        }
-
+        //ImGui::Separator();
         ParameterGUI::endPanel();
 
         if(showLoudspeakers){
@@ -3136,90 +3138,69 @@ public:
             ParameterGUI::drawMenu(&src->fileMenu);
 
             ImGui::Separator();
-            ImGui::Text("Sample Player");
-            ParameterGUI::drawParameter(&src->samplePlayerRate);
-            ParameterGUI::drawParameter(&src->soundFileStartPhase);
-            ParameterGUI::drawParameter(&src->soundFileDuration);
+
+            if(ImGui::TreeNode("Sample Player")){
+                ParameterGUI::drawParameter(&src->samplePlayerRate);
+                ParameterGUI::drawParameter(&src->soundFileStartPhase);
+                ParameterGUI::drawParameter(&src->soundFileDuration);
+                ImGui::TreePop();
+            }
 
             ImGui::Separator();
-            ImGui::Text("Position");
-            ParameterGUI::drawParameter(&src->centerAzi);
-            ParameterGUI::drawParameter(&src->aziOffset);
-            ParameterGUI::drawParameter(&src->aziOffsetScale);
-            ParameterGUI::drawParameter(&src->centerEle);
-            ParameterGUI::drawParameter(&src->eleOffset);
-            ParameterGUI::drawParameter(&src->eleOffsetScale);
+
+            if(ImGui::TreeNode("Position")){
+                ParameterGUI::drawParameter(&src->centerAzi);
+                ParameterGUI::drawParameter(&src->aziOffset);
+                ParameterGUI::drawParameter(&src->aziOffsetScale);
+                ParameterGUI::drawParameter(&src->centerEle);
+                ParameterGUI::drawParameter(&src->eleOffset);
+                ParameterGUI::drawParameter(&src->eleOffsetScale);
+                ImGui::TreePop();
+            }
 
             ImGui::Separator();
-            ImGui::Text("Position Update: Moving");
-            ParameterGUI::drawParameter(&src->angularFreq);
-            ParameterGUI::drawParameter(&src->angFreqCycles);
-            ParameterGUI::drawParameter(&src->angFreqOffset);
-            ParameterGUI::drawParameterInt(&src->angFreqCyclesMult,"");
-            ParameterGUI::drawTrigger(&src->loopLengthToRotFreq);
+            if(ImGui::TreeNode("Position Update: Moving")){
+                ParameterGUI::drawParameter(&src->angularFreq);
+                ParameterGUI::drawParameter(&src->angFreqCycles);
+                ParameterGUI::drawParameter(&src->angFreqOffset);
+                ParameterGUI::drawParameterInt(&src->angFreqCyclesMult,"");
+                ParameterGUI::drawTrigger(&src->loopLengthToRotFreq);
+                ImGui::TreePop();
+            }
 
             ImGui::Separator();
-            ImGui::Text("Position Update: Sine");
-            ParameterGUI::drawParameter(&src->posOscFreq);
-            ParameterGUI::drawParameter(&src->posOscAmp);
-            ParameterGUI::drawParameter(&src->posOscPhase);
+
+            if(ImGui::TreeNode("Position Update: Sine")){
+                ParameterGUI::drawParameter(&src->posOscFreq);
+                ParameterGUI::drawParameter(&src->posOscAmp);
+                ParameterGUI::drawParameter(&src->posOscPhase);
+                ImGui::TreePop();
+            }
 
             ImGui::Separator();
-            ImGui::Text("Sine, Saw, Square");
-            ParameterGUI::drawParameter(&src->oscFreq);
+            if(ImGui::TreeNode("Sine, Saw, Square")){
+                ParameterGUI::drawParameter(&src->oscFreq);
+                ImGui::TreePop();
+            }
 
             ImGui::Separator();
-            ImGui::Text("Source Spread");
-            ParameterGUI::drawParameter(&src->sourceWidth);
-            ParameterGUI::drawParameterBool(&src->scaleSrcWidth);
+            if(ImGui::TreeNode("Source Spread")){
+                ParameterGUI::drawParameter(&src->sourceWidth);
+                ParameterGUI::drawParameterBool(&src->scaleSrcWidth);
+                ImGui::TreePop();
+            }
 
             ImGui::Separator();
-            ImGui::Text("Windowed Phase");
-            ParameterGUI::drawParameterBool(&src->wp.printInfo);
-            ParameterGUI::drawParameterBool(&src->wp.loopWindow);
-            ParameterGUI::drawParameterInt(&src->wp.windowStart,"");
-            ParameterGUI::drawParameterInt(&src->wp.windowLength,"");
-            ParameterGUI::drawParameterInt(&src->wp.increment,"");
-
-
+            if(ImGui::TreeNode("Windowed Phase")){
+                ParameterGUI::drawParameterBool(&src->wp.printInfo);
+                ParameterGUI::drawParameterBool(&src->wp.loopWindow);
+                ParameterGUI::drawParameterInt(&src->wp.windowStart,"");
+                ParameterGUI::drawParameterInt(&src->wp.windowLength,"");
+                ParameterGUI::drawParameterInt(&src->wp.increment,"");
+                ImGui::TreePop();
+            }
             ParameterGUI::endPanel();
         }
-
-//        ParameterGUI::beginPanel("Loudspeakers");
-
-//        ParameterGUI::drawMenu(&speakerDensity);
-//        ParameterGUI::drawParameterBool(&drawLabels);
-//        for(SpeakerLayer sl: layers){
-//            for(SpeakerV sv: sl.l_speakers){
-//                ParameterGUI::drawParameterBool(sv.enabled);
-//                ParameterGUI::drawParameter(sv.speakerGain);
-//            }
-//        }
-//        ParameterGUI::endPanel();
-
-//        ParameterGUI::beginPanel("Set All Sources");
-//        ParameterGUI::drawParameterBool(&setAllEnabled);
-//        ParameterGUI::drawParameterBool(&setAllDecorrelate);
-
-//        ParameterGUI::drawMenu(&setAllPanMethod);
-//        ParameterGUI::drawMenu(&setAllPosUpdate);
-//        ParameterGUI::drawMenu(&setAllSoundFileIdx);
-
-//        ImGui::Separator();
-//        ImGui::Text("SamplePlayers");
-//        ParameterGUI::drawParameter(&setPlayerPhase);
-//        ParameterGUI::drawParameter(&playerRateMultiplier);
-//        ParameterGUI::drawParameterBool(&useRateMultiplier);
-
-//        ImGui::Separator();
-//        ImGui::Text("Positions");
-//        ParameterGUI::drawParameter(&setAllAzimuth);
-//        ParameterGUI::drawParameter(&setAllAzimuthOffsetScale);
-
-//        ParameterGUI::drawTrigger(&resetPosOscPhase);
-
-//        ParameterGUI::endPanel();
-
 
         imguiEndFrame();
         imguiDraw();
