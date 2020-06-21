@@ -25,6 +25,7 @@
 #include <atomic>
 #include <vector>
 
+
 #define SAMPLE_RATE 44100
 //#define BLOCK_SIZE 2048
 // 1024 block size seems to fix issue where it sounded like samples were being dropped.
@@ -85,7 +86,6 @@ ParameterInt setAllInputChannel("setAllInputChannel","",0,"",0,INPUT_CHANNELS-1)
 
 
 ParameterBool useRateMultiplier("useRateMultiplier","",0.0);
-//Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,44100.0);
 Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,1.0);
 Parameter setAllDurations("setAllDurations","",0.0,"",0.0,10.f);
 
@@ -324,15 +324,11 @@ public:
         triggerEvent.displayName(eventName);
         triggerEvent.registerChangeCallback([&](float val){
 
-//            for(pair<ParameterBool*, float> p: initialBools){
-//                p.first->set(p.second);
-//            }
             for(pair<Parameter*, float> p: initialParams){
                 p.first->set(p.second);
             }
 
             for(pair<ParameterMenu*, string> p: initialMenus){
-                //p.first->set(p.second);
                 p.first->setCurrent(p.second);
             }
 
@@ -356,14 +352,6 @@ public:
         }
 
     }
-
-//    void TriggerGroup::triggerNextGroup(){
-//        groupToTrigger->triggerEvent.set(1.0);
-//    }
-
-//    void addInitialBool(ParameterBool *paramBool,float val){
-//        initialBools.push_back(make_pair(paramBool,val));
-//    }
 
     void setParameter(Parameter *param,float val){
         initialParams.push_back(make_pair(param,val));
@@ -406,44 +394,32 @@ void wrapValues(float &val){
 
 class WindowPhase{
 public:
+
     float *windowBuffer;
-    //gam::HANN han;
-
-    //gam::LFO hann;
     int windowBufferLength;
-//    int windowLength;
-    ParameterInt windowLength{"windowLength","",1000,"",10,SAMPLE_RATE};
-
-//    int windowStart = 0;
-    ParameterInt windowStart{"windowStart","",0,"",0,SAMPLE_RATE};
-     int windowEnd = 0;
-   int readPosition = 0;
-
-    ParameterInt increment{"increment","",0,"",0,10000};
-
-    ParameterBool loopWindow{"loopWindow","",0,"",0,1};
 
     float *audioBuffer;
     int audioBufferLength;
+
+    ParameterInt windowLength{"windowLength","",1000,"",10,SAMPLE_RATE};
+    ParameterInt windowStart{"windowStart","",0,"",0,SAMPLE_RATE};
+    ParameterInt increment{"increment","",0,"",0,10000};
+    ParameterBool loopWindow{"loopWindow","",0,"",0,1};
+
+    int windowEnd = 0;
+    int readPosition = 0;
 
     gam::SoundFile sf;
 
     ParameterBool printInfo{"printInfo","",0,"",0,1};
 
-    //ParameterInt inc{"inc","",0,"",0,10000};
-
 
     WindowPhase(int start, int winLength, int inc, int windowBuffLen = 1024){
 
-//        const char * path = "src/sounds/shortCount.wav";
-//        sf.path(path);
-//        bool opened = sf.openRead();
-//        cout << "Opened: " << opened << endl;
-//        audioBuffer = new float[sf.samples()];
-//        audioBufferLength = sf.samples();
-//        int read = sf.readAll(audioBuffer);
-//        cout << "read: " << read << endl;
-//        sf.close();
+        windowLength.displayName("Window Length");
+        windowStart.displayName("Window Start");
+        increment.displayName("Increment");
+        loopWindow.displayName("Loop Window");
 
         loadSoundfile();
 
@@ -468,7 +444,6 @@ public:
         windowStart = start;
         windowEnd = windowStart + windowLength;
 
-        //audioBuffer = audioBuff;
         increment = inc;
 
         windowLength.registerChangeCallback([&](float val){
@@ -500,37 +475,6 @@ public:
         windowStart.max(numSamples);
     }
 
-
-
-//    void setStartPos(int pos){
-//        while(pos >= audioBufferLength ){
-//            pos -= audioBufferLength;
-//        }
-//        while(pos < 0){
-//            pos += audioBufferLength;
-//        }
-//        windowStart = pos;
-//        windowEnd = windowStart + windowLength;
-//    }
-
-//    float getWindowGain(){
-//        if(readPosition > windowEnd){
-//            windowStart += increment;
-//            wrapPosition(windowStart);
-//            windowEnd += increment;
-//            wrapPosition(windowEnd);
-//            readPosition = windowStart;
-
-//            return windowBuffer[0];
-
-//        }else{
-//            int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
-//                    readPosition++;
-//            return windowBuffer[windowIdx];
-
-//        }
-//    }
-
     void wrapPosition(int &value){
         if(value >= audioBufferLength){
             value -= audioBufferLength;
@@ -541,10 +485,8 @@ public:
 
     void incrementWindow(){
         int wStart = windowStart.get() + increment.get();
-        //windowEnd += increment;
         wrapPosition(wStart);
         windowStart.set(wStart);
-        //wrapPosition(windowEnd);
     }
 
     float getWindowPhase(){
@@ -560,11 +502,6 @@ public:
             if(readPosition >= audioBufferLength){
                 readPosition -= audioBufferLength;
             }
-
-//            if(readPosition >= windowEnd){
-//                incrementWindow();
-//                readPosition = windowStart.get();
-//            }
 
             if(windowStart.get() < windowEnd){ // ---s--------e---
 
@@ -585,7 +522,6 @@ public:
 
             } else { // end before start
 
-
                 if(readPosition >= windowEnd && readPosition < windowStart.get()){
                     incrementWindow();
                     readPosition = windowStart.get();
@@ -601,13 +537,6 @@ public:
 
                 }else if(readPosition < windowEnd){ // --r--e-----s---
 
-                   // NewValue = (((OldValue - OldMin) * (NewMax - NewMin)) / (OldMax - OldMin)) + NewMin
-
-//                    NewMax = windowBufferLength;
-//                    oldmax = windowEnd;
-//                    oldmin = fakeWindowStart;
-//                    newmin = 0;
-
                     int fakeWindowStart = windowStart.get() - audioBufferLength;
 
                     int windowIdx = (((readPosition - fakeWindowStart)*(windowBufferLength))/ (windowEnd - fakeWindowStart));
@@ -618,13 +547,8 @@ public:
                     return sample * windowBuffer[windowIdx];
                 }else{
                     cout << "Should not reach here" << endl;
-
-
                 }
-
-
             }
-
 
 
 //            if(readPosition >= audioBufferLength){
@@ -726,16 +650,11 @@ public:
         }
     }
 
-
-
-
 };
 
 
 class VirtualSource {
 public:
-
-    //std::vector<SpeakerV*> enabledSpeakersVS;
 
     WindowPhase wp{0,30000,10000};
 
@@ -800,8 +719,6 @@ public:
     Parameter soundFileStartPhase{"soundFileStartPhase","",0.0,"",0.0,1.0};
     Parameter soundFileDuration{"soundFileDuration","",1.0,"",0.0,1.0};
 
-    //float samplePlayerRateStore = 1.0;
-
     Trigger loopLengthToRotFreq{"loopLengthToRotFreq","",""};
     Parameter angFreqOffset{"angFreqOffset","",0.0,"",-1.0,1.0};
     ParameterInt angFreqCyclesMult{"angFreqCyclesMult","",1,"",1,100};
@@ -851,8 +768,6 @@ public:
         posOscAmp.displayName("Amp");
         posOscPhase.displayName("Phase");
 
-//        aziOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
-//        eleOffset.set( -1.0 + 2.0 * ((float)rand()) / RAND_MAX);
         aziOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
         eleOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
 
@@ -865,14 +780,12 @@ public:
         positionOsc.freq(posOscFreq.get());
 
         panMethod.setElements(panningMethodNames);
-        //sourceSound.setElements({"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"});
         sourceSound.setElements(sourceSoundNames);
         positionUpdate.setElements(posUpdateNames);
         fileMenu.setElements(files);
         samplePlayer.load("src/sounds/count.wav");
 
         fileMenu.setCurrent("count.wav");
-//        samplePlayerRate.set(1.0 + (.002 * vsBundle.bundleIndex()));
         samplePlayer.rate(1.0);
         samplePlayerRate.set(1.0);
         soundFileDuration.max(samplePlayer.period());
@@ -2393,35 +2306,7 @@ public:
         }
 //****** end Allosphere ******
 
-
-
-//        for(int i = 0; i < speakers.size(); i++){
-//            cout << "Speaker: " << i << " chan: " << speakers[i].deviceChannel << " azi: " << speakers[i].aziInRad << endl;
-//        }
-
-
-        //std::sort(speakers.begin(),speakers.end(),&speakerSortTest);
-
-//        for(int i = 0; i < speakers.size(); i++){
-//            cout << "Speaker: " << i << " chan: " << speakers[i].deviceChannel << " azi: " << speakers[i].aziInRad << endl;
-//        }
-
-//        SpeakerV p(-1, ang-10.0,0.0,0,5.0,0,0);
-//        p.isPhantom = true;
-//        speakers.push_back(p);
-       // speakers.push_back(SpeakerV(-1, -100,0.0,0,5.0,0,0));
-
         initPanner();
-
-//        for(SpeakerLayer &sl: layers){
-//            sl.l_enabledSpeakers.clear();
-//            for(int i = 0; i < sl.l_speakers.size(); i ++){
-//                if(sl.l_speakers[i].enabled->get() > 0.5){
-//                    sl.l_enabledSpeakers.push_back(&sl.l_speakers[i]);
-//                }
-//            }
-//            std::sort(sl.l_enabledSpeakers.begin(),sl.l_enabledSpeakers.end(),&speakerSort);
-//        }
 
         for(SpeakerLayer &sl:layers){
             speakerCount += sl.l_speakers.size();
@@ -2436,29 +2321,15 @@ public:
             }
         }
 
-//        for(SpeakerLayer sl:layers){
-//            speakerCount += sl.l_speakers.size();
-//            for(int i = 0; i < sl.l_speakers.size(); i++){
-//                parameterGUI << sl.l_speakers[i].enabled; // << sl.l_speakers[i].speakerGain;
-//                presets << *sl.l_speakers[i].enabled;
-//                if((int) sl.l_speakers[i].deviceChannel > highestChannel){
-//                    highestChannel = sl.l_speakers[i].deviceChannel;
-//                }
-//            }
-//        }
-
         audioIO().channelsOut(highestChannel + 1);
 
         cout << "channelsOutDevice(): " << audioIO().channelsOutDevice() << endl;
-
-
 
         //cout << "Hightst Channel: " << highestChannel << endl;
 
         mPeaks = new atomic<float>[highestChannel + 1];
 
         addSphere(mSpeakerMesh, 1.0, 16, 16);
-//        mSpeakerMesh.primitive(Mesh::LINES);
         mSpeakerMesh.primitive(Mesh::TRIANGLES);
 
         uint32_t key = 0;
@@ -2549,30 +2420,6 @@ public:
         events.push_back(event3);
         events.push_back(eventSequencer);
 
-//        auto *event1 = new Event("Event 1");
-//        event1->addBPF(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
-//        event1->addBPF(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
-//        event1->setParameter(&vs->enabled,1.0);
-//        event1->setMenu(&vs->fileMenu,"shortCount.wav");
-
-//        auto *event2 = new Event("Event 2");
-//        event2->addBPF(&vs->sourceWidth,0.0,{2.0,7.0});
-
-//        event1->addEvent(event2,4.0);
-
-//        events.push_back(event1);
-//        events.push_back(event2);
-
-//        auto *speakerGroup = new SpeakerGroup("Group 1");
-//        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
-//        speakerGroups.push_back(speakerGroup);
-
-//        auto *event3 = new Event("Event 3");
-//        event3->addBPF(&speakerGroup->gain,1.0,{0.0,5.0});
-//        events.push_back(event3);
-
-
-
     }
 
     void onCreate() override {
@@ -2651,87 +2498,6 @@ public:
                         }
                 }
             }
-
-
-            //TODO: Buffer based processing only uses VBAP
-//            if(!sampleWise.get()){
-//                if(decorrelateBlock){
-//                    for(VirtualSource *v: sources){
-//                        if(v->enabled){
-//                            enabledSources += 1.0f;
-//                            v->updatePosition(t);
-//                            int speakerChan1, speakerChan2;
-//                            Vec3d gains = calcGains(io,v->aziInRad.get(), speakerChan1, speakerChan2);
-
-//                            if(speakerChan1 != -1){
-//                                auto outputBuffer1 = decorrelation.getOutputBuffer(speakerChan1);
-//                                for(int i = 0; i < io.framesPerBuffer(); i++){
-//                                    setOutput(io,speakerChan1,i,outputBuffer1[i] * gains[0]);
-//                                }
-//                            }
-//                            if(speakerChan2 != -1){
-//                                auto outputBuffer2 = decorrelation.getOutputBuffer(speakerChan2);
-//                                for(int i = 0; i < io.framesPerBuffer(); i++){
-//                                    setOutput(io,speakerChan2,i,outputBuffer2[i] * gains[1]);
-//                                }
-//                            }
-//                        }
-//                        if(sourcesToDecorrelate.get() == v->vsBundle.bundleIndex()+1){
-//                             break;
-//                        }
-//                    }
-
-//                } else{
-
-//                    for(VirtualSource *v: sources){
-//                        if(v->enabled){
-//                            enabledSources += 1.0f;
-//                            v->updatePosition(t);
-//                            v->getBuffer(srcBuffer);
-//                            if(useDelay.get() == 1.f){
-//                                renderBufferDelaySpeakers(io,v->aziInRad.get(), srcBuffer);
-//                            }else{
-//                                renderBuffer(io,v->aziInRad.get(), srcBuffer);
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-
-
-            //Combine All Channels
-//            if(combineAllChannels.get()){
-//                float combineBuffer[BLOCK_SIZE];
-//                for(int i = 0; i < BLOCK_SIZE;i++){
-//                    combineBuffer[i] = 0.0f;
-//                }
-//                //combine all the channels into one buffer
-//                for (int speaker = 0; speaker < speakers.size(); speaker++) {
-//                    if(!speakers[speaker].isPhantom && speakers[speaker].enabled->get()){
-//                        int deviceChannel = speakers[speaker].deviceChannel;
-
-//                        for (int i = 0; i < io.framesPerBuffer(); i++) {
-//                            if(deviceChannel < io.channelsOut()) {
-//                                combineBuffer[i] += io.out(deviceChannel, i)/enabledSources;
-//                            }
-//                        }
-//                    }
-//                }
-
-//                //copy combined buffer to all channels
-//                for (int speaker = 0; speaker < speakers.size(); speaker++) {
-//                    if(!speakers[speaker].isPhantom && speakers[speaker].enabled->get()){
-//                        int deviceChannel = speakers[speaker].deviceChannel;
-
-//                        for (int i = 0; i < io.framesPerBuffer(); i++) {
-//                            if(deviceChannel < io.channelsOut()) {
-//                                io.out(deviceChannel,i) = combineBuffer[i]*masterGain.get();
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-
         }
 
 //        for(SpeakerLayer sl:layers){
@@ -2782,17 +2548,6 @@ public:
                 }
             }
         }
-
-
-//        if(record.get()){
-//            std::vector<float *> buffers;
-//            for(int i = 0; i < io.channelsOut(); i++){ //TODO: Get the actual channels
-//                buffers.push_back(io.outBuffer(i));
-//            }
-////            soundFile.write({io.outBuffer(0),io.outBuffer(1)}, io.framesPerBuffer());
-//            soundFile.write(buffers, io.framesPerBuffer());
-//        }
-
 
     }
 
@@ -2991,12 +2746,6 @@ public:
                 showSetAllSources = false;
             }
 
-
-            //        ParameterBool setAllMute("setAllMute","",0.0);
-            //        Parameter setAllGain("setAllGain","",0.0,"",0.0,1.0);
-            //        ParameterInt setAllInputChannel("setAllInputChannel","",0,"",0,INPUT_CHANNELS-1);
-
-
             ImGui::Separator();
             ParameterGUI::drawParameterBool(&setAllEnabled);
             ParameterGUI::drawParameterBool(&setAllMute);
@@ -3192,7 +2941,7 @@ public:
 
             ImGui::Separator();
             if(ImGui::TreeNode("Windowed Phase")){
-                ParameterGUI::drawParameterBool(&src->wp.printInfo);
+                //ParameterGUI::drawParameterBool(&src->wp.printInfo);
                 ParameterGUI::drawParameterBool(&src->wp.loopWindow);
                 ParameterGUI::drawParameterInt(&src->wp.windowStart,"");
                 ParameterGUI::drawParameterInt(&src->wp.windowLength,"");
