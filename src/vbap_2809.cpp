@@ -25,13 +25,11 @@
 #include <atomic>
 #include <vector>
 
-
 #define SAMPLE_RATE 44100
 //#define BLOCK_SIZE 2048
 // 1024 block size seems to fix issue where it sounded like samples were being dropped.
 #define BLOCK_SIZE 1024
 #define MAX_DELAY 44100
-//#define IR_LENGTH 2048
 #define IR_LENGTH 2048
 #define NUM_SOURCES 5
 
@@ -54,16 +52,12 @@ ParameterBool useDelay("useDelay","", 0.0);
 Parameter masterGain("masterGain","",0.5,"",0.0,1.0);
 ParameterBool soundOn("soundOn","",0.0);
 
-//PresetHandler presets("data/presets");
-//PresetHandler srcPresets("data/srcPresets");
-
 SearchPaths searchpaths;
 
 vector<string> files;
 vector<string> posUpdateNames{"Static", "Trajectory", "Moving","Sine"};
 vector<string> panningMethodNames{"LBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
 vector<string> sourceSoundNames{"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"};
-
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
 
@@ -84,7 +78,6 @@ ParameterBool setAllMute("setAllMute","",0.0);
 Parameter setAllGain("setAllGain","",0.0,"",0.0,1.0);
 ParameterInt setAllInputChannel("setAllInputChannel","",0,"",0,INPUT_CHANNELS-1);
 
-
 ParameterBool useRateMultiplier("useRateMultiplier","",0.0);
 Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,1.0);
 Parameter setAllDurations("setAllDurations","",0.0,"",0.0,10.f);
@@ -97,10 +90,6 @@ Trigger setPiano("setPiano","","");
 Trigger setMidiPiano("setMidiPiano","","");
 
 ParameterBool combineAllChannels("combineAllChannels","",0.0);
-//HtmlInterfaceServer interfaceServer("/Users/primary1/Documents/code/allolibCode/projects/interface.js");
-
-//Parameter setMorphTime("setMorphTime","",0.0,"",0.0, 10.0);
-//Parameter recallPreset("recallPreset","",0.0,"",0.0, 30.0);
 
 ParameterMenu speakerDensity("speakerDensity","",0,"");
 vector<string> spkDensityMenuNames{"All", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Skip 5"};
@@ -122,7 +111,6 @@ Parameter maxFreqDev("maxFreqDev","",10.0,"", 0.0, 50.0);
 Parameter maxTau("maxTau","",1.0,"", 0.0, 10.0);
 Parameter startPhase("startPhase","",0.0,"", 0.0, 10.0);
 Parameter phaseDev("phaseDev","",0.0,"", 0.0, 10.0);
-//Trigger updateDecorrelation("updateDecorrelation","","");
 
 Trigger generateRandDecorSeed("generateRandDecorSeed","","");
 
@@ -350,7 +338,6 @@ public:
         for(TriggerEvent *tg: triggerEvents){
             tg->next(t);
         }
-
     }
 
     void setParameter(Parameter *param,float val){
@@ -362,7 +349,6 @@ public:
     }
 
     void addBPF(Parameter *param, float initialVal, vector<float> breakPoints, bool interpolate = true){
-
         BPF *e = new BPF(param, initialVal,breakPoints);
         e->interpolate = interpolate;
         bpfs.push_back(e);
@@ -465,12 +451,12 @@ public:
         const char * path = "src/sounds/shortCount.wav";
         sf.path(path);
         bool opened = sf.openRead();
-        cout << "Opened: " << opened << endl;
+        //cout << "Opened: " << opened << endl;
         int numSamples = sf.samples();
         audioBuffer = new float[numSamples];
         audioBufferLength = numSamples;
         int read = sf.readAll(audioBuffer);
-        cout << "read: " << read << endl;
+        //cout << "read: " << read << endl;
         sf.close();
         windowStart.max(numSamples);
     }
@@ -541,7 +527,6 @@ public:
 
                     int windowIdx = (((readPosition - fakeWindowStart)*(windowBufferLength))/ (windowEnd - fakeWindowStart));
 
-                    //int windowIdx = ((readPosition - (audioBufferLength - windowStart)) * (windowBufferLength)) / (windowLength);
                     float sample = audioBuffer[readPosition];
                     readPosition++;
                     return sample * windowBuffer[windowIdx];
@@ -727,8 +712,6 @@ public:
 
     VirtualSource(){
 
-
-
         enabled.displayName("Enabled");
         mute.displayName("Mute");
         decorrelateSrc.displayName("Decorrelate");
@@ -795,7 +778,6 @@ public:
         sourceRamp.rampDuration = rampDuration.get();
 
         angFreqOffset.registerChangeCallback([&](float val){
-
            angFreqCycles.set(angFreqCyclesStore + val);
         });
 
@@ -847,23 +829,14 @@ public:
         eleOffset.registerChangeCallback([&](float val){
             val *= eleOffsetScale;
             val += centerEle;
-            //wrapValues(val);
-           elevation = val;
+            elevation = val;
         });
 
         eleOffsetScale.registerChangeCallback([&](float val){
            val *= eleOffset;
            val += centerEle;
-           //wrapValues(val);
-          elevation = val;
+           elevation = val;
         });
-
-//        positionUpdate.registerChangeCallback([&](float val){
-//            if(val == 3){
-//                cout << "Setting Center Azi" << endl;
-//                centerAzi = aziInRad.get();
-//            }
-//        });
 
         posOscPhase.registerChangeCallback([&](float val){
             positionOsc.phase(val);
@@ -885,7 +858,6 @@ public:
         });
 
         aziInRad.setProcessingCallback([&](float val){
-            //cout << "Azi PC" << endl;
             wrapValues(val);
             return val;
         });
@@ -897,13 +869,6 @@ public:
         fileMenu.registerChangeCallback([&](float val){
             samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
             soundFileDuration.max(samplePlayer.period());
-            //setPlayerPhase.max(samplePlayer.frames());
-//            bool didLoad = samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
-//            if(didLoad){
-//                cout << "Did Load " << samplePlayer.period()  << endl;
-
-//                soundFilePeriod.max(samplePlayer.period());
-//            }
         });
 
         triggerRamp.registerChangeCallback([&](float val){
@@ -923,20 +888,10 @@ public:
                 sourceRamp.rampDuration = val;
         });
 
-//        vsBundle << enabled << sourceGain << aziInRad << positionUpdate << fileMenu << samplePlayerRate << triggerRamp << sourceRamp.rampStartAzimuth << sourceRamp.rampEndAzimuth << sourceRamp.rampDuration << angularFreq;
         vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
 
     }
 
-//    void updateEnabledSpeakers(){
-
-//        enabledSpeakersVS.clear();
-//        for(int i = 0; i < speakers.size(); i ++){
-//            if(speakers[i].enabled->get() > 0.5){
-//                enabledSpeakersVS.push_back(&speakers[i]);
-//            }
-//        }
-//    }
 
     void updatePosition(unsigned int sampleNumber){
 
@@ -956,7 +911,6 @@ public:
             float temp = centerAzi + (aziOffset* aziOffsetScale) + (positionOsc() * posOscAmp.get());
             wrapValues(temp); //wrapValues is also called by aziInRad callback...
             aziInRad.set(temp);
-//            aziInRad.set(centerAzi + (positionOsc() * posOscAmp.get()));
         }
         default:
             break;
@@ -1012,12 +966,6 @@ public:
         return sample * sourceGain.get();
 
     }
-    
-//    void getBuffer(float *buffer){
-//        for(int i = 0; i < BLOCK_SIZE; i++){
-//            buffer[i] = getSample();
-//        }
-//    }
 
     float getSamplePlayerPhase(){
         return samplePlayer.pos()/samplePlayer.frames();
@@ -1043,7 +991,7 @@ class SpeakerV: public Speaker {
 public:
 
     ParameterBool *enabled;
-    Parameter *speakerGain;//{"speakerGain","",1.0,"",0.0,1.0};
+    Parameter *speakerGain;
     std::string oscTag;
     std::string deviceChannelString;
     float aziInRad;
@@ -1115,9 +1063,6 @@ public:
     }
 };
 
-//std::vector<SpeakerV> speakers;
-//std::vector<SpeakerV*> enabledSpeakers;
-//Mat<2,double> matrix;
 
 class SpeakerLayer {
 public:
@@ -1138,10 +1083,6 @@ bool speakerSort(SpeakerV const *first, SpeakerV const *second){
     return first->azimuth < second->azimuth;
 }
 
-//bool speakerSortTest(SpeakerV first, SpeakerV second){
-//    return first.azimuth < second.azimuth;
-//}
-
 void initPanner(){
 
     enabledSpeakersLock.lock();
@@ -1155,19 +1096,6 @@ void initPanner(){
         std::sort(sl.l_enabledSpeakers.begin(),sl.l_enabledSpeakers.end(),&speakerSort);
     }
     enabledSpeakersLock.unlock();
-
-
-//    enabledSpeakersLock.lock();
-
-//    enabledSpeakers.clear();
-//    for(int i = 0; i < speakers.size(); i ++){
-//        if(speakers[i].enabled->get() > 0.5){
-//            enabledSpeakers.push_back(&speakers[i]);
-//        }
-//    }
-//    std::sort(enabledSpeakers.begin(),enabledSpeakers.end(),&speakerSort);
-
-//    enabledSpeakersLock.unlock();
 }
 
 
@@ -1224,15 +1152,12 @@ public:
 
 vector<SpeakerGroup *> speakerGroups;
 
-//class MyApp : public App
 struct MyApp : public App
 {
 public:
     Mesh mSpeakerMesh;
     vector<Mesh> mVec;
     vector<int>  sChannels;
-    //SpeakerLayout speakerLayout;
-   // Speakers alloSpeakers;
     atomic<float> *mPeaks {nullptr};
     float speedMult = 0.03f;
     Vec3d srcpos {0.0,0.0,0.0};
@@ -1245,7 +1170,6 @@ public:
     Decorrelation decorrelation{IR_LENGTH};
     int decorrelationSeed = 1000;
 
-    //float mMaxjump{M_PI};
     map<uint32_t, vector<uint32_t>> routingMap;
 
     Font font;
@@ -1256,15 +1180,8 @@ public:
 
     OutputRecorder soundFileRecorder;
 
-
-//    Trigger triggerEvent{"triggerEvent","",""};
-
-    //ParameterBool record{"record","",0,"",0,1};
-
     MyApp()
     {
-
-//        soundFile.open("test.wav",audioIO().framesPerSecond(),2);
 
         searchpaths.addAppPaths();
         searchpaths.addRelativePath("src/sounds");
@@ -1387,22 +1304,6 @@ public:
             }
         });
 
-//        record.registerChangeCallback([&](float val){
-//            if(val == 0.0){
-//                soundFile.close();
-//            }
-
-//        });
-
-//        triggerEvent.registerChangeCallback([&](float val){
-////            Event *e = events[0];
-////            e->triggered = true;
-//            for(Event *e: events){
-//                e->triggered = true;
-//            }
-
-//        });
-
         decorrelationMethod.registerChangeCallback([&](float val){
 
             if(val == 0){ //Kendall
@@ -1442,8 +1343,6 @@ public:
         startPhase.registerChangeCallback([&](float val){configureDecorrelation.set(1.0);});
         phaseDev.registerChangeCallback([&](float val){configureDecorrelation.set(1.0);});
 
-
-
         resetPosOscPhase.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
                 v->posOscPhase.set(0.0);
@@ -1451,29 +1350,16 @@ public:
         });
 
         setPlayerPhase.registerChangeCallback([&](float val){
-            //VirtualSource *firstSource = sources[0];
-            //int firstPos = firstSource->samplePlayer.pos();
+
             for(VirtualSource *v: sources){
                 v->samplePlayer.reset();
                 int idx = v->vsBundle.bundleIndex();
-                //int newPos = firstPos + (val*idx);
                 int newPos = val*v->samplePlayer.frames()*idx;
                 while(newPos >= v->samplePlayer.frames()){
                     newPos -= v->samplePlayer.frames();
                 }
                 v->samplePlayer.pos(newPos);
             }
-//            VirtualSource *firstSource = sources[0];
-//            int firstPos = firstSource->samplePlayer.pos();
-//            for(VirtualSource *v: sources){
-//                v->samplePlayer.reset();
-//                int idx = v->vsBundle.bundleIndex();
-//                int newPos = firstPos + (val*idx);
-//                if(newPos >= v->samplePlayer.frames()){
-//                    newPos -= v->samplePlayer.frames();
-//                }
-//                v->samplePlayer.pos(newPos);
-//            }
         });
 
         setAllDecorrelate.registerChangeCallback([&](float val){
@@ -1485,13 +1371,10 @@ public:
         useRateMultiplier.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
                 if(val == 1.f){
-                    //v->samplePlayer.rate(1.0);
                     float newRate = 1.0+ (v->vsBundle.bundleIndex()*playerRateMultiplier.get());
                     v->samplePlayerRate.set(newRate);
-                   // v->samplePlayer.rate(newRate);
                 }else{
                     v->samplePlayerRate.set(1.0);
-//                    v->samplePlayer.rate(1.0);
                 }
             }
         });
@@ -1505,29 +1388,12 @@ public:
             }
         });
 
-        //useRateMultiplier.set(1.0);
-
         setAllAzimuthOffsetScale.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
                 v->aziOffsetScale.set(val);
             }
         });
 
-//        setAllAzimuth.registerChangeCallback([&](float val){
-//            if(sources.size() > 1){
-//                float aziInc = azimuthSpread.get()/(sources.size()-1);
-//                float startAzi = val - (azimuthSpread.get()/2.0);
-//                for(VirtualSource *v: sources){
-//                    int idx = v->vsBundle.bundleIndex();
-//                    float newAzi = startAzi + (aziInc*idx);
-//                    wrapValues(newAzi);
-//                    v->aziInRad.set(newAzi);
-//                }
-//            }else{
-//                VirtualSource *v = sources[0];
-//                v->aziInRad.set(val);
-//            }
-//        });
         setAllAzimuth.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
                 float newAzi = val;
@@ -1670,20 +1536,6 @@ public:
             }
         });
 
-//        speakerDensity.registerChangeCallback([&](float val){
-//            for(int i = 0; i < speakers.size(); i++){
-//                SpeakerV v = speakers[i];
-//                if(v.deviceChannel != -1){
-//                    int tempVal = v.deviceChannel % ((int)val+1);
-//                    if(tempVal == 0){
-//                        v.enabled->set(1.0f);
-//                    }else {
-//                        v.enabled->set(0.0f);
-//                    }
-//                }
-//            }
-//        });
-
         speakerDensity.registerChangeCallback([&](float val){
             for(SpeakerLayer& sl: layers){
                 for(int i = 0; i < sl.l_speakers.size(); i++){
@@ -1709,7 +1561,6 @@ public:
 
     Vec3d ambiSphericalToOGLCart(float azimuth, float elevation, float radius){
         Vec3d ambiSpherical;
-       // float elevation = 0.0;
 
         //find xyz in cart audio coords
         float x = radius * cos(elevation) * cos(azimuth);
@@ -1934,10 +1785,6 @@ public:
 
             std::vector<float> layerGains(layers.size(),0.0);
 
-            //for(int i = 0; i < layers.size(); i++){layerGains[i] = 0.0;}
-
-            //cout << "Layers Size " << to_string(layers.size()) << endl;
-
             if(layers.size() > 1){
                 if(vs->elevation < layers[0].elevation){
                     //Source is below bottom ring
@@ -1963,12 +1810,8 @@ public:
                             break;
 
                         }
-
                     }
-
                 }
-
-
             }else{
                 //Only one layer so make its gain 1
                 layerGains[0] = 1.0;
@@ -2006,8 +1849,6 @@ public:
                     }
                 }
             }
-
-
 
         }else if(vs->panMethod.get()==1 || vs->panMethod.get() == 2){ //Skirt and snap source width
 
@@ -2048,7 +1889,6 @@ public:
                         int speakerChannel = sl.l_speakers[i].deviceChannel;
                         float spkGain = sl.l_speakers[i].speakerGain->get();
                         if(vs->decorrelateSrc.get()){
-//                            sample = decorrelation.getOutputBuffer(speakerChannel + outputBufferOffset)[io.frame()];
                             sample = decorrelation.getOutputBuffer(sl.l_speakers[i].decorrelationOutputIdx)[io.frame()];
                             setOutput(io,speakerChannel,io.frame(),sample * (gains[speakerChannel] / gainScaleFactor) * xFadeGain * spkGain);
 
@@ -2058,49 +1898,6 @@ public:
                     }
                 }
             }
-
-
-
-//            Vec3f a;
-//            Vec3f b;
-
-//            float gains[speakers.size()];
-//            float gainsAccum = 0.0;
-//            float sample = 0.0f;
-//            if(!vs->decorrelateSrc.get()){
-//                 sample = vs->getSample();
-//            }
-
-//            for (int i = 0; i < speakers.size(); i++){
-//                gains[i] = 0.0;
-//                if(!speakers[i].isPhantom && speakers[i].enabled->get()){
-//                    //int speakerChannel = speakers[i].deviceChannel;
-//                    float gain = calcSpeakerSkirtGains(vs->aziInRad,vs->sourceWidth,vs->sourceWidth.max(),speakers[i].aziInRad);
-//                    gains[i] = gain;
-//                    gainsAccum += gain*gain;
-//                }
-//            }
-
-//            float gainScaleFactor = 1.0;
-//            if(vs->scaleSrcWidth.get()){
-//                if(!gainsAccum == 0.0){
-//                    gainScaleFactor = sqrt(gainsAccum);
-//                }
-//            }
-
-//            for (int i = 0; i < speakers.size(); i++){
-//                if(!speakers[i].isPhantom && speakers[i].enabled->get()){
-//                    int speakerChannel = speakers[i].deviceChannel;
-//                    if(vs->decorrelateSrc.get()){
-//                        sample = decorrelation.getOutputBuffer(speakerChannel + outputBufferOffset)[io.frame()];
-//                        setOutput(io,speakerChannel,io.frame(),sample * (gains[i] / gainScaleFactor) * xFadeGain);
-
-//                    }else{
-//                        setOutput(io,speakerChannel,io.frame(),sample * (gains[i] / gainScaleFactor) * xFadeGain);
-//                    }
-//                }
-//            }
-
         }
 
 //        else if(vs->panMethod.get() == 2){ // Snap Source Width
@@ -2272,7 +2069,7 @@ public:
 
 // ****** Allosphere ******
         else if (location == 1){
-//            SpeakerLayout alloLayout;
+
             Speakers alloLayout;
             alloLayout = AlloSphereSpeakerLayout();
 
@@ -2282,19 +2079,15 @@ public:
             middle.elevation = 0.0;
             top.elevation = 41.0 * float(M_PI) / 180.f;
 
-            
-//            for(int i = 0; i < alloLayout.numSpeakers(); i++){
             for(int i = 0; i < alloLayout.size(); i++){
-//                Speaker spk = alloLayout.speakers()[i];
+
                 Speaker spk = alloLayout[i];
                 if(spk.elevation == -32.5){
                     //Allosphere azimuth increases clockwise
                     bottom.l_speakers.push_back(SpeakerV(spk.deviceChannel,spk.azimuth* -1.0,spk.elevation,0,5.0,0,0.0));
                 }else if(spk.elevation == 0.0){
-                    //Allosphere azimuth increases clockwise
                     middle.l_speakers.push_back(SpeakerV(spk.deviceChannel,spk.azimuth* -1.0,spk.elevation,0,5.0,0,0.0));
                 }else if(spk.elevation == 41.0){
-                    //Allosphere azimuth increases clockwise
                     top.l_speakers.push_back(SpeakerV(spk.deviceChannel,spk.azimuth* -1.0,spk.elevation,0,5.0,0,0.0));
                 }
             }
@@ -2347,8 +2140,6 @@ public:
                         //Values are from 0, number of speakers -1
                         sl.l_speakers[j].decorrelationOutputIdx = val;
                         values.push_back(val);
-//                        values.push_back(sl.l_speakers[j].deviceChannel);
-//                        cout << "Device chan: " << sl.l_speakers[j].deviceChannel << endl;
                         val++;
                     }
                 }
@@ -2425,7 +2216,6 @@ public:
     void onCreate() override {
 
         nav().pos(0, 1, 20);
-//        parameterGUI.init();
 
         font.load("src/data/VeraMono.ttf", 28, 1024);
         font.alignCenter();
@@ -2439,13 +2229,11 @@ public:
 
     void onAnimate( double dt) override {
         navControl().active(!parameterGUI.usingInput());
-//        navControl().active(!parameterGUI.usingInput() && !speakerGUI.usingInput());
     }
 
     virtual void onSound(AudioIOData &io) override {
 
         static unsigned int t = 0;
-        //float srcBuffer[BLOCK_SIZE];
         float enabledSources = 0.0f;
         gam::Sync::master().spu(audioIO().fps());
 
@@ -2843,7 +2631,6 @@ public:
         ParameterGUI::drawParameter(&masterGain);
         ParameterGUI::drawParameterBool(&stereoOutput);
         ParameterGUI::drawParameter(&stereoOutputGain);
-        //ImGui::Separator();
         ParameterGUI::endPanel();
 
         if(showLoudspeakers){
@@ -2986,7 +2773,6 @@ public:
             break;
         }
     }
-
 };
 
 
