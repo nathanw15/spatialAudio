@@ -82,6 +82,17 @@ ParameterBool useRateMultiplier("useRateMultiplier","",0.0);
 Parameter setPlayerPhase("setPlayerPhase","",0.0,"",0.0,1.0);
 Parameter setAllDurations("setAllDurations","",0.0,"",0.0,10.f);
 
+//Windowed Phase
+ParameterBool setAllWPLoopWindow("setAllWPLoopWindow", "",0.0);
+ParameterInt setAllWPWinStart("setAllWPWinStart","",0,"",0,SAMPLE_RATE);
+ParameterInt setAllWPWinLen("setAllWPWinLen","",0,"",0,SAMPLE_RATE);
+ParameterInt setAllWPWinLenMult("setAllWPWinLenMult", "",0,"",0,500);
+ParameterInt setAllWPInc("setAllWPInc","",0,"",0, SAMPLE_RATE/2);
+Parameter setAllWPOverlap("setAllWPOverlap","",0.0,"",0.0,1.0);
+ParameterBool setAllWPUseInc("setAllWPUseInc","",1.0,"",0.0,1.0);
+ParameterInt setAllWPIncMult("setAllWPIncMult","",0,"",0,500);
+Trigger setAllWPReset("setAllWPReset","","");
+
 Trigger triggerAllRamps("triggerAllRamps","","");
 Trigger setAllStartAzi("setAllStartAzi","","");
 Trigger setAllEndAzi("setAllEndAzi","","");
@@ -390,10 +401,13 @@ public:
     ParameterInt windowLength{"windowLength","",1000,"",10,SAMPLE_RATE};
     ParameterInt windowStart{"windowStart","",0,"",0,SAMPLE_RATE};
     ParameterInt increment{"increment","",0,"",0,10000};
+    ParameterBool useIncrement{"useIncrement","",1,"",0,1};
     ParameterBool loopWindow{"loopWindow","",0,"",0,1};
 
     int windowEnd = 0;
     int readPosition = 0;
+
+    int incrementStore = 0;
 
     gam::SoundFile sf;
 
@@ -407,7 +421,8 @@ public:
         increment.displayName("Increment");
         loopWindow.displayName("Loop Window");
 
-        loadSoundfile();
+        const char * path = "src/sounds/shortCount.wav";
+        loadSoundfile(path);
 
         windowBufferLength = windowBuffLen;
         windowBuffer = new float[windowBufferLength];//malloc(windowBuffLen,sizeof(float));
@@ -430,7 +445,7 @@ public:
         windowStart = start;
         windowEnd = windowStart + windowLength;
 
-        increment = inc;
+        increment = incrementStore = inc;
 
         windowLength.registerChangeCallback([&](float val){
             int sEnd = windowStart.get() + val;
@@ -445,10 +460,23 @@ public:
             windowEnd = sEnd;
         });
 
+        increment.registerChangeCallback([&](float val){
+           incrementStore = val;
+        });
+
+        useIncrement.registerChangeCallback([&](float val){
+            if(val == 1.0){
+                increment.set(incrementStore);
+            }else{
+                increment.setNoCalls(0.0);
+            }
+        });
+
     }
 
-    void loadSoundfile(){
-        const char * path = "src/sounds/shortCount.wav";
+    void loadSoundfile(const char * filePath){
+//        const char * path = "src/sounds/shortCount.wav";
+        const char * path = filePath;
         sf.path(path);
         bool opened = sf.openRead();
         //cout << "Opened: " << opened << endl;
@@ -483,7 +511,12 @@ public:
                     printInfo.set(0);
         }
 
-        if(loopWindow.get()){
+
+//        if(readPosition >= audioBufferLength){
+//            readPosition -= audioBufferLength;
+//        }
+
+        if(loopWindow.get()){ //Loop over the window
 
             if(readPosition >= audioBufferLength){
                 readPosition -= audioBufferLength;
@@ -508,7 +541,7 @@ public:
 
             } else { // end before start
 
-                if(readPosition >= windowEnd && readPosition < windowStart.get()){
+                if(readPosition >= windowEnd && readPosition < windowStart.get()){ // --e--r--s--
                     incrementWindow();
                     readPosition = windowStart.get();
                 }
@@ -535,103 +568,106 @@ public:
                 }
             }
 
+        }else { //Loop over the entire clip
+
+            if(readPosition >= audioBufferLength){
+                readPosition -= audioBufferLength;
+                incrementWindow();
+            }
+
+
+            if(windowStart.get() < windowEnd){ // ---s--------e---
+
+//                if(readPosition >= windowEnd){
+//                    incrementWindow();
+//                    readPosition = windowStart.get();
+//                }
+
+//                if(readPosition < windowStart.get()){
+//                    readPosition = windowStart.get();
+//                }
+
+                if(readPosition >= windowStart.get() && readPosition < windowEnd){ // ---s---r---e---
+
+                    int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
+                    float sample = audioBuffer[readPosition];
+                    readPosition++;
+                    return sample * windowBuffer[windowIdx];
+                } else{// ---s--------e-r-  or // -r-s--------e---
+                    readPosition++;
+                    return 0.0;
+                }
+
+
+            } else { // end before start
+
+//                if(readPosition >= windowEnd && readPosition < windowStart.get()){ // --e--r--s--
+//                    incrementWindow();
+//                    readPosition = windowStart.get();
+//                }
+
+                if(readPosition >= windowStart.get()){ //  --e-----s--r--
+
+                    int fakeWindowEnd = windowEnd + audioBufferLength;
+                    int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (fakeWindowEnd - windowStart);
+                    float sample = audioBuffer[readPosition];
+                    readPosition++;
+                    return sample * windowBuffer[windowIdx];
+
+                }else if(readPosition < windowEnd){ // --r--e-----s---
+
+                    int fakeWindowStart = windowStart.get() - audioBufferLength;
+
+                    int windowIdx = (((readPosition - fakeWindowStart)*(windowBufferLength))/ (windowEnd - fakeWindowStart));
+
+                    float sample = audioBuffer[readPosition];
+                    readPosition++;
+                    return sample * windowBuffer[windowIdx];
+
+                }else{ // ----e--r---s---
+                    readPosition++;
+                    return 0.0;
+                }
+            }
+
+
+
+
+//            float gain = 0.0;
 
 //            if(readPosition >= audioBufferLength){
 //                readPosition -= audioBufferLength;
-////                int wStart = windowStart.get() + increment;
-////                windowEnd += increment;
-////                wrapPosition(wStart);
-////                windowStart.set(wStart);
-////                wrapPosition(windowEnd);
-//            }
-
-//            //is greater than audiobuffer
-////            if(readPosition >= audioBufferLength){
-////                readPosition -= audioBufferLength;
-////            }
-
-//            //is within loop
-//            if(readPosition >= windowStart.get()){
-//                int readOffset = windowStart.get() + readPosition;
-//                while(readOffset > audioBufferLength){
-//                    readOffset -= audioBufferLength;
-//                }
-
-//                if(readOffset < windowEnd){ //within loop
-//                    int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
-//                    float sample = audioBuffer[readPosition];
-//                    readPosition++;
-//                    return sample * windowBuffer[windowIdx];
-//                }
-
-//            }else{
-
-//                if(windowStart.get() > windowEnd && readPosition < windowEnd){
-//                    int windowIdx = ((readPosition + (audioBufferLength - windowStart)) * (windowBufferLength)) / (windowLength);
-//                    float sample = audioBuffer[readPosition];
-//                    readPosition++;
-//                    return sample * windowBuffer[windowIdx];
-//                }
-//            }
-
-
-////reset readPosition and
+//                //            windowStart += increment;
 //                int wStart = windowStart.get() + increment;
 //                windowEnd += increment;
 //                wrapPosition(wStart);
 //                windowStart.set(wStart);
 //                wrapPosition(windowEnd);
+//            }
 
-//                readPosition = windowStart.get();
+
+//            //        wrapPosition(windowStart);
+//            //        wrapPosition(windowEnd);
 
 
-//            int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
-//            float sample = audioBuffer[readPosition];
+//            if(readPosition >= windowStart && readPosition <= windowEnd){
+//                int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
+//                gain = windowBuffer[windowIdx];
+//                //cout <<"readPos: " << readPosition << "gain: " << gain << endl;
+//            }else if(readPosition >= windowStart && readPosition > windowEnd){
+//                if(windowEnd < windowStart){// read at end with window wrapped
+//                    int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowLength);
+//                    gain = windowBuffer[windowIdx];
+//                }
+//            }else if(readPosition < windowStart && readPosition < windowEnd){
+//                if(windowEnd < windowStart){ // read at beginning with window wrapped
+//                    int windowIdx = ((readPosition + (audioBufferLength - windowStart)) * (windowBufferLength)) / (windowLength);
+//                    gain = windowBuffer[windowIdx];
+//                }
+//            }
+//            float windowedSample = audioBuffer[readPosition] * gain;
 //            readPosition++;
-//            return sample * windowBuffer[windowIdx];
-
-
-
-
-
-        }else {
-
-
-            float gain = 0.0;
-
-            if(readPosition >= audioBufferLength){
-                readPosition -= audioBufferLength;
-                //            windowStart += increment;
-                int wStart = windowStart.get() + increment;
-                windowEnd += increment;
-                wrapPosition(wStart);
-                windowStart.set(wStart);
-                wrapPosition(windowEnd);
-            }
-
-
-            //        wrapPosition(windowStart);
-            //        wrapPosition(windowEnd);
-
-
-            if(readPosition >= windowStart && readPosition <= windowEnd){
-                int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowEnd - windowStart);
-                gain = windowBuffer[windowIdx];
-                //cout <<"readPos: " << readPosition << "gain: " << gain << endl;
-            }else if(readPosition >= windowStart && readPosition > windowEnd){
-                if(windowEnd < windowStart){// read at end with window wrapped
-                    int windowIdx = ((readPosition - windowStart) * (windowBufferLength)) / (windowLength);
-                    gain = windowBuffer[windowIdx];
-                }
-            }else if(readPosition < windowStart && readPosition < windowEnd){
-                if(windowEnd < windowStart){ // read at beginning with window wrapped
-                    int windowIdx = ((readPosition + (audioBufferLength - windowStart)) * (windowBufferLength)) / (windowLength);
-                    gain = windowBuffer[windowIdx];
-                }
-            }
-            float windowedSample = audioBuffer[readPosition] * gain;
-            readPosition++;
-            return windowedSample;
+//            return windowedSample;
         }
     }
 
@@ -641,7 +677,7 @@ public:
 class VirtualSource {
 public:
 
-    WindowPhase wp{0,30000,10000};
+    WindowPhase wp{0,30000,0};
 
     gam::SamplePlayer<> samplePlayer;
     gam::NoisePink<> noise;
@@ -867,8 +903,13 @@ public:
         });
 
         fileMenu.registerChangeCallback([&](float val){
+            //const char *path = searchpaths.find(files[val]).filepath().c_str();
+
             samplePlayer.load(searchpaths.find(files[val]).filepath().c_str());
+            //samplePlayer.load(path);
+
             soundFileDuration.max(samplePlayer.period());
+            wp.loadSoundfile(searchpaths.find(files[val]).filepath().c_str());
         });
 
         triggerRamp.registerChangeCallback([&](float val){
@@ -1249,6 +1290,18 @@ public:
         setAllAzimuthOffsetScale.displayName("Azi. Offset Scale");
         setAllElevation.displayName("Elevation");
         setAllEleOffsetScale.displayName("Elev. Offset Scale");
+
+        setAllWPLoopWindow.displayName("Loop Window");
+        setAllWPWinStart.displayName("Window Start");
+        setAllWPWinLen.displayName("Window Length");
+        setAllWPWinLenMult.displayName("Window Length Mult.");
+        setAllWPOverlap.displayName("Overlap");
+        setAllWPInc.displayName("Increment");
+        setAllWPIncMult.displayName("Increment Mult.");
+        setAllWPUseInc.displayName("Use Increment");
+        setAllWPReset.displayName("Reset");
+
+
         resetPosOscPhase.displayName("Reset Position Osc. Phase");
 
         decorrelationMethod.displayName("Method");
@@ -1303,6 +1356,85 @@ public:
                 v->sourceSound.set(val);
             }
         });
+
+
+
+        setAllWPLoopWindow.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->wp.loopWindow.set(val);
+            }
+        });
+
+        setAllWPWinStart.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->wp.windowStart.set(val);
+            }
+        });
+
+        setAllWPWinLen.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->wp.windowLength.set(val);
+            }
+
+            setAllWPWinLenMult.set(setAllWPWinLenMult.get());
+
+        });
+
+        setAllWPWinLenMult.registerChangeCallback([&](float val){
+            float firstSourceWinLen = sources[0]->wp.windowLength.get();
+            for(VirtualSource *v: sources){
+                float newWindowLen = firstSourceWinLen + (v->vsBundle.bundleIndex() * val);
+                v->wp.windowLength.set(newWindowLen);
+            }
+        });
+
+        setAllWPInc.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->wp.increment.set(val);
+            }
+
+            setAllWPIncMult.set(setAllWPIncMult.get());
+
+        });
+
+        setAllWPUseInc.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                v->wp.useIncrement.set(val);
+            }
+        });
+
+        setAllWPIncMult.registerChangeCallback([&](float val){
+            float firstSourceInc = sources[0]->wp.incrementStore;
+            for(VirtualSource *v: sources){
+                float newInc = firstSourceInc +  (v->vsBundle.bundleIndex() * val); //firstSourceInc + (v->vsBundle.bundleIndex()*val*firstSourceInc);
+                v->wp.increment.set(newInc);
+            }
+        });
+
+        setAllWPReset.registerChangeCallback([&](float val){
+
+            sources[0]->wp.windowStart.set(0.0);
+
+            setAllWPOverlap.set(setAllWPOverlap.get());
+            for(VirtualSource *v: sources){
+                //v->wp.windowStart.set(0.0);
+
+                if(v->wp.loopWindow.get()){
+                    v->wp.readPosition = v->wp.windowStart.get();
+                }else{
+                    v->wp.readPosition = 0;
+                }
+            }
+        });
+
+        setAllWPOverlap.registerChangeCallback([&](float val){
+            for(VirtualSource *v: sources){
+                float newStart = sources[0]->wp.windowStart.get() + (v->vsBundle.bundleIndex()*v->wp.windowLength.get()*val);
+                v->wp.windowStart.set(newStart);
+            }
+        });
+
+
 
         decorrelationMethod.registerChangeCallback([&](float val){
 
@@ -2582,6 +2714,41 @@ public:
                 //ParameterGUI::drawTrigger(&resetPosOscPhase);
                 ImGui::TreePop();
             }
+            ImGui::Separator();
+            if(ImGui::TreeNode("Windowed Phase")){
+                ParameterGUI::drawParameterBool(&setAllWPLoopWindow);
+                ParameterGUI::drawParameterInt(&setAllWPWinStart,"");
+                ParameterGUI::drawParameterInt(&setAllWPWinLen,"");
+                ParameterGUI::drawParameterInt(&setAllWPWinLenMult,"");
+                ParameterGUI::drawParameter(&setAllWPOverlap);
+                ParameterGUI::drawParameterInt(&setAllWPInc,"");
+                ParameterGUI::drawParameterInt(&setAllWPIncMult,"");
+                ParameterGUI::drawParameterBool(&setAllWPUseInc);
+                ParameterGUI::drawTrigger(&setAllWPReset);
+
+                ImGui::Text("Windowed Source Phases");
+                ImVec2 size;
+                size.x = 200;
+                size.y = 100;
+
+                float values[NUM_SOURCES] = {};
+
+                int bufLen = sources[0]->wp.audioBufferLength;
+
+                for(int i = 0; i < NUM_SOURCES; i++){
+                    VirtualSource *vs = sources[i];
+                    float value = 0.0;
+                    if(vs->enabled.get()){
+                        value = (float) sources[i]->wp.readPosition / bufLen;
+                    }
+                    values[i] = value;
+                }
+
+                ImGui::PlotHistogram("##values", values, IM_ARRAYSIZE(values), 0, NULL, 0.0f, 1.0f, size);
+
+                ImGui::TreePop();
+            }
+
             ParameterGUI::endPanel();
         }
 
