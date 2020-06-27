@@ -318,6 +318,10 @@ public:
     vector<pair<ParameterBool*, float>> initialBools;
     vector<pair<ParameterMenu*, string>> initialMenus;
 
+
+    int updateInterval = 10;
+    unsigned int prevSample = 0;
+
     Event(string name){
         eventName = name;
         triggerEvent.displayName(eventName);
@@ -342,12 +346,20 @@ public:
     }
 
     void processEvent(unsigned int t){
-        for(BPF *e: bpfs){
-            e->next(t);
-        }
 
-        for(TriggerEvent *tg: triggerEvents){
-            tg->next(t);
+        int sampleDiff = t - prevSample;
+
+        if(sampleDiff > updateInterval){
+            for(BPF *e: bpfs){
+                e->next(t);
+            }
+            prevSample = t;
+
+
+            for(TriggerEvent *tg: triggerEvents){
+                tg->next(t);
+            }
+
         }
     }
 
@@ -838,22 +850,25 @@ public:
 
         centerAzi.registerChangeCallback([&](float val){
             val += aziOffset*aziOffsetScale;
-            wrapValues(val);
-           aziInRad = val;
+            //wrapValues(val);
+           //aziInRad = val;
+            aziInRad.set(val);
         });
 
         aziOffset.registerChangeCallback([&](float val){
             val *= aziOffsetScale;
             val += centerAzi;
-            wrapValues(val);
-           aziInRad = val;
+            //wrapValues(val);
+           //aziInRad = val;
+            aziInRad.set(val);
         });
 
         aziOffsetScale.registerChangeCallback([&](float val){
            val *= aziOffset;
            val += centerAzi;
-           wrapValues(val);
-          aziInRad = val;
+           //wrapValues(val);
+          //aziInRad = val;
+           aziInRad.set(val);
         });
 
         centerEle.registerChangeCallback([&](float val){
@@ -1529,8 +1544,8 @@ public:
         setAllAzimuth.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
                 float newAzi = val;
-                wrapValues(newAzi);
-                v->aziInRad.set(newAzi);
+                //wrapValues(newAzi);
+                //v->aziInRad.set(newAzi); (called by centerAzi change callback)
                 v->centerAzi.set(newAzi);
             }
         });
@@ -2305,6 +2320,15 @@ public:
         auto *event3 = new Event("Event 3");
         auto *eventSequencer = new Event("Sequence");
 
+        auto *diverge = new Event("Diverge");
+
+        diverge->setParameter(&setAllAzimuth,2.0);
+        diverge->setParameter(&setAllElevation,0.0);
+        diverge->addBPF(&setAllAzimuthOffsetScale,0.0,{1.0,5.0});
+        diverge->addBPF(&setAllEleOffsetScale,0.0,{1.0,5.0});
+
+
+
         //Add components to event1
         event1->addBPF(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
         event1->addBPF(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
@@ -2342,6 +2366,8 @@ public:
         events.push_back(event2);
         events.push_back(event3);
         events.push_back(eventSequencer);
+
+        events.push_back(diverge);
 
     }
 
