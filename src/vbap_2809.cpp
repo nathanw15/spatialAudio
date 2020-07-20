@@ -353,13 +353,12 @@ public:
             for(BPF *e: bpfs){
                 e->next(t);
             }
-            prevSample = t;
 
+            prevSample = t;
 
             for(TriggerEvent *tg: triggerEvents){
                 tg->next(t);
             }
-
         }
     }
 
@@ -1162,12 +1161,16 @@ public:
     ParameterBool enable{"enable","",1,"",0,1};
     Parameter gain{"groupGain","",0.0,"",0.0,1.0};
 
+    //ParameterBundle pb{"speakerBundle"};
+
     SpeakerGroup(string name){
         groupName = name;
+
         enable.displayName("Enable");
         gain.displayName("Gain");
 
         enable.registerChangeCallback([&](float val){
+            cout <<  "Enable: " << groupName << " " << val << endl;
             for(SpeakerV *s: speakers){
                 if(val == 1.0){
                     if(s->enabled->get() == 0.0){
@@ -1182,10 +1185,13 @@ public:
         });
 
         gain.registerChangeCallback([&](float val){
+            cout << "Gain: " << groupName << " " << val << endl;
            for(SpeakerV *s: speakers){
                s->speakerGain->set(val);
            }
         });
+
+        //pb << enable << gain;
 
     }
 
@@ -2324,10 +2330,16 @@ public:
 
         diverge->setParameter(&setAllAzimuth,2.0);
         diverge->setParameter(&setAllElevation,0.0);
-        diverge->addBPF(&setAllAzimuthOffsetScale,0.0,{1.0,5.0});
-        diverge->addBPF(&setAllEleOffsetScale,0.0,{1.0,5.0});
+        diverge->addBPF(&setAllAzimuthOffsetScale,0.0,{0.5,5.0});
+        diverge->addBPF(&setAllEleOffsetScale,0.0,{0.5,5.0});
 
 
+        auto *converge = new Event("Converge");
+
+        converge->setParameter(&setAllAzimuth,2.0);
+        converge->setParameter(&setAllElevation,0.0);
+        converge->addBPF(&setAllAzimuthOffsetScale,0.5,{0.0,5.0});
+        converge->addBPF(&setAllEleOffsetScale,0.5,{0.0,5.0});
 
         //Add components to event1
         event1->addBPF(&vs->sourceGain,0.0,{1.0,1.0,1.0,1.0,0.5,1.0});
@@ -2368,7 +2380,7 @@ public:
         events.push_back(eventSequencer);
 
         events.push_back(diverge);
-
+        events.push_back(converge);
     }
 
     void onCreate() override {
@@ -2628,6 +2640,7 @@ public:
             ImGui::Separator();
             for(SpeakerGroup *sg: speakerGroups){
                 ImGui::Text(sg->groupName.c_str());
+                //ImGui::Text(sg->groupName);
                 ParameterGUI::drawParameterBool(&sg->enable);
                 ParameterGUI::drawParameter(&sg->gain);
                 ImGui::Separator();
