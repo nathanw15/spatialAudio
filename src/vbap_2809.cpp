@@ -759,6 +759,7 @@ public:
 
     VirtualSource(){
 
+
         enabled.displayName("Enabled");
         mute.displayName("Mute");
         decorrelateSrc.displayName("Decorrelate");
@@ -1161,16 +1162,12 @@ public:
     ParameterBool enable{"enable","",1,"",0,1};
     Parameter gain{"groupGain","",0.0,"",0.0,1.0};
 
-    //ParameterBundle pb{"speakerBundle"};
-
     SpeakerGroup(string name){
         groupName = name;
-
         enable.displayName("Enable");
         gain.displayName("Gain");
 
         enable.registerChangeCallback([&](float val){
-            cout <<  "Enable: " << groupName << " " << val << endl;
             for(SpeakerV *s: speakers){
                 if(val == 1.0){
                     if(s->enabled->get() == 0.0){
@@ -1185,14 +1182,10 @@ public:
         });
 
         gain.registerChangeCallback([&](float val){
-            cout << "Gain: " << groupName << " " << val << endl;
            for(SpeakerV *s: speakers){
                s->speakerGain->set(val);
            }
         });
-
-        //pb << enable << gain;
-
     }
 
     void addSpeaker(SpeakerV *speaker){
@@ -1377,8 +1370,6 @@ public:
                 v->sourceSound.set(val);
             }
         });
-
-
 
         setAllWPLoopWindow.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
@@ -2513,7 +2504,8 @@ public:
 
         g.clear(0);
         g.blending(true);
-        g.blendModeAdd();
+        g.blendAdd();
+        //g.blendModeAdd();
 
         g.pushMatrix();
         Mesh lineMesh;
@@ -2638,11 +2630,16 @@ public:
                 showLoudspeakerGroups = false;
             }
             ImGui::Separator();
+
+            int id = 0;
             for(SpeakerGroup *sg: speakerGroups){
                 ImGui::Text(sg->groupName.c_str());
                 //ImGui::Text(sg->groupName);
+                ImGui::PushID(id);
                 ParameterGUI::drawParameterBool(&sg->enable);
                 ParameterGUI::drawParameter(&sg->gain);
+                ImGui::PopID();
+                id++;
                 ImGui::Separator();
             }
             ParameterGUI::endPanel();
