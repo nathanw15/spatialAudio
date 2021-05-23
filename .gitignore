@@ -1,0 +1,33 @@
+# don't ignore `bin` anywhere in folder tree
+!**/bin
+# but ignore things inside folder named bin
+**/bin/*
+# while not ignoring things inside bin/data
+!**/bin/data
+
+# anything named build
+build
+
+*.log
+*.png
+*.PNG
+*.gif
+*.GIF
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
+*.tiff
+*.TIFF
+*.bmp
+*.BMP
+*.bin
+*.binary
+
+apps/
+
+allolib/
+al_ext/
+
+.DS_Store
+CMakeLists.txt.user
