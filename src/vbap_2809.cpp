@@ -15,7 +15,7 @@
 #include "al/ui/al_Parameter.hpp"
 #include "al/ui/al_ParameterServer.hpp"
 #include "al/ui/al_ControlGUI.hpp"
-#include "al/ui/al_HtmlInterfaceServer.hpp"
+//#include "al/ui/al_HtmlInterfaceServer.hpp"
 
 #include "al_ext/spatialaudio/al_Decorrelation.hpp"
 //#include "al_ext/soundfile/al_SoundfileBufferedRecord.hpp"
@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere
-const int location = 1;
+const int location = 2;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -126,12 +126,16 @@ Parameter phaseDev("phaseDev","",0.0,"", 0.0, 10.0);
 Trigger generateRandDecorSeed("generateRandDecorSeed","","");
 
 ParameterBool drawLabels("drawLabels","",1.0);
+ParameterBool toggleLabelOrientation("toggleLabelOrientation","",1.0);
+Parameter restingSpeakerSize("restingSpeakerSize","",0.2,"",0.0,1.0);
 
 ParameterBool stereoOutput("stereoOutput","",0.0);
 Parameter stereoOutputGain("stereoOutputGain","",0.2,"",0.0,1.0);
 Parameter playerRateMultiplier("playerRateMultiplier","",0.002,"",0.0,0.1);
 
 ParameterInt displaySource("displaySource","",0,"",0,NUM_SOURCES-1);
+
+Trigger recalcPanning("recalcPanning","","");
 
 int highestChannel = 0;
 int speakerCount = 0;
@@ -148,6 +152,12 @@ bool showRecorder = false;
 bool showSetAllSources = false;
 bool showXFade = false;
 bool showDecorrelation = false;
+
+bool loopStart = false;
+Vec3d loopStartPos;
+
+//Parameter numerator("numerator","",1.0,"",-10.0,10.0);// = 1.0;
+//Parameter denom("denom","",1.0,"",-10.0,10.0);
 
 struct Ramp {
 
@@ -726,6 +736,8 @@ public:
     ParameterBool decorrelateSrc{"decorrelateSrc","",0};
     ParameterBool invert{"invert","",0};
 
+    ParameterBool draw{"draw","",0.0};
+
     ParameterMenu positionUpdate{"positionUpdate","",0,""};
     Parameter sourceGain{"sourceGain","",0.5,"",0.0,1.0};
     Parameter aziInRad{"aziInRad","",2.9,"",-1.0*M_PI,M_PI};
@@ -756,6 +768,11 @@ public:
     ParameterInt angFreqCyclesMult{"angFreqCyclesMult","",1,"",1,100};
 
     float angFreqCyclesStore = 1.0;
+
+    Parameter numerator{"numerator","",1.0,"",-10.0,10.0};// = 1.0;
+    Parameter denom{"denom","",1.0,"",-10.0,10.0};
+
+    Trigger aziZeroResetLoop{"aziZeroResetLoop","",""};
 
     VirtualSource(){
 
@@ -825,6 +842,19 @@ public:
         sourceRamp.rampEndAzimuth = rampEndAzimuth.get();
         sourceRamp.rampDuration = rampDuration.get();
 
+        numerator.registerChangeCallback([&](float val){
+            if(denom.get()!= 0.0){
+           angFreqCycles.set((val*(1.0/(float)samplePlayer.period()))/denom.get());
+            }
+        });
+
+        denom.registerChangeCallback([&](float val){
+            if(val != 0.0){
+           angFreqCycles.set((numerator.get()*(1.0/(float)samplePlayer.period()))/val);
+            }
+        });
+
+
         angFreqOffset.registerChangeCallback([&](float val){
            angFreqCycles.set(angFreqCyclesStore + val);
         });
@@ -832,6 +862,11 @@ public:
         loopLengthToRotFreq.registerChangeCallback([&](float val){
             angFreqCyclesStore = (float) angFreqCyclesMult * (1.0/(float)samplePlayer.period());
             angFreqCycles.set(angFreqCyclesStore + angFreqOffset.get());
+        });
+
+        aziZeroResetLoop.registerChangeCallback([&](float val){
+            aziInRad.set(0.0);
+            samplePlayer.reset();
         });
 
 
@@ -944,7 +979,8 @@ public:
                 sourceRamp.rampDuration = val;
         });
 
-        vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase;
+        vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase
+                 << numerator << denom << aziZeroResetLoop;
 
     }
 
@@ -981,6 +1017,11 @@ public:
         case 0:
             if(samplePlayer.done()){
                 samplePlayer.reset();
+                loopStart = true;
+//                VirtualSource *vs = sources[0];
+//                loopStartPos.x = vs->aziInRad;
+//                loopStartPos.y = vs->elevation;
+//                loopStartPos.z = radius;
             }
             sample = samplePlayer();
             break;
@@ -1061,6 +1102,8 @@ public:
 
     int decorrelationOutputIdx = 0;
 
+    int sortedOrder;
+
     SpeakerV(int chan, float az=0.f, float el=0.f, int gr=0, float rad=1.f, float ga=1.f, int del = 0){
         delay = del;
         readPos = 0;
@@ -1069,7 +1112,9 @@ public:
         setDelay(maxDelay.get()*SAMPLE_RATE);
         bufferSize = 44100*2;//MAKE WORK WITH MAX DELAY
         buffer = calloc(bufferSize,sizeof(float));
+        if(chan > -1){
         deviceChannel = chan;
+        }
         azimuth= az;
         elevation = el;
         group = gr;
@@ -1150,6 +1195,9 @@ void initPanner(){
             }
         }
         std::sort(sl.l_enabledSpeakers.begin(),sl.l_enabledSpeakers.end(),&speakerSort);
+//        for(int i = 0; i < sl.l_enabledSpeakers.size();i++){
+//            sl.l_enabledSpeakers[i].sortedOrder = i;
+//        }
     }
     enabledSpeakersLock.unlock();
 }
@@ -1206,6 +1254,66 @@ public:
 };
 
 vector<SpeakerGroup *> speakerGroups;
+//Trigger resetPosOscPhase("resetPosOscPhase","","");
+
+
+//Vec3d calcGains(SpeakerLayer &sl, const float &srcAzi, SpeakerV* &speakerChan1, SpeakerV* &speakerChan2);
+Trigger gainPrinter("gainPrinter","","");
+
+struct SpeakerGain {
+    int deviceChannel;
+    vector<float> gains;
+};
+vector<SpeakerGain*> speakerGains;
+
+//void printGains(){
+
+//    float increment = 0.1;
+//    vector<int> channels = {44,45};
+//    for (int channel: channels){
+//        SpeakerGain* sg = new SpeakerGain;
+//        sg->deviceChannel = channel;
+//        speakerGains.push_back(sg);
+//    }
+//    VirtualSource* vs = sources[0];
+//    float currentAzimuth = 0.0;
+
+//    while (currentAzimuth < M_2PI){
+
+//        vs->aziInRad = currentAzimuth;
+
+//        SpeakerV *speaker1;
+//        SpeakerV *speaker2;
+
+//        Vec3d gains = calcGains(layers[1],vs->aziInRad, speaker1, speaker2);
+
+//        for(SpeakerGain* sg : speakerGains){
+//            int sgChan = sg->deviceChannel;
+//            if(sgChan == speaker1->deviceChannel){
+//                sg->gains.push_back(gains[0]);
+//            }else if(sgChan == speaker2->deviceChannel){
+//                sg->gains.push_back(gains[1]);
+//            }else {
+//                sg->gains.push_back(0.0);
+//            }
+//        }
+
+//        currentAzimuth += increment;
+
+//    }
+
+//    for(SpeakerGain* sg: speakerGains){
+//        cout << sg->deviceChannel;
+//        for(float g: sg->gains){
+//            cout << ", " << g;
+//        }
+//        cout << endl;
+//    }
+
+//}
+
+
+
 
 struct MyApp : public App
 {
@@ -1231,13 +1339,16 @@ public:
     Mesh fontMesh;
 
     std::string pathToInterfaceJs = "interface.js";
-    HtmlInterfaceServer htmlServer{pathToInterfaceJs};
+    //HtmlInterfaceServer htmlServer{pathToInterfaceJs};
 
     OutputRecorder soundFileRecorder;
 
     MyApp()
     {
 
+        loopStartPos.x = 0.0;
+        loopStartPos.y = 0.0;
+        loopStartPos.z = 0.0;
         searchpaths.addAppPaths();
         searchpaths.addRelativePath("src/sounds");
 
@@ -1275,7 +1386,7 @@ public:
                           << setAllAzimuth << setAllAzimuthOffsetScale << setAllElevation
                           << setAllEleOffsetScale;
 
-        htmlServer << parameterServer();
+       // htmlServer << parameterServer();
 
         soundOn.displayName("Sound On");
         masterGain.displayName("Master Gain");
@@ -1697,7 +1808,18 @@ public:
         });
 
         parameterServer().sendAllParameters("127.0.0.1", 9011);
+
+        gainPrinter.registerChangeCallback([&](float val){
+
+            printGains();
+        });
+
+        recalcPanning.registerChangeCallback([&](float val){
+           initPanner();
+        });
     }
+
+
 
     void createMatrix(Vec3d left, Vec3d right){
         matrix.set(left.x,left.y,right.x,right.y);
@@ -1787,6 +1909,12 @@ public:
                 //speakerChan1 = layers[0].l_enabledSpeakers[0];
 
                 int chan2Idx;
+
+//                if(i+1 == sl.l_enabledSpeakers.size()){
+//                    chan2Idx = 0;
+//                }else{
+//                    chan2Idx = i+1;
+//                }
 
                 if(i+1 == sl.l_enabledSpeakers.size()){
                     chan2Idx = 0;
@@ -1979,17 +2107,21 @@ public:
                     float sampleOut1, sampleOut2;
 
                     if(vs->decorrelateSrc.get()){
-                        if(speaker1 != nullptr){
+                        if(speaker1 != nullptr || speaker1->isPhantom != true){
                             sampleOut1 = decorrelation.getOutputBuffer(speaker1->decorrelationOutputIdx)[io.frame()];
                             setOutput(io,speaker1->deviceChannel,io.frame(),sampleOut1 * gains[0] * xFadeGain * speaker1->speakerGain->get());
                         }
-                        if(speaker2 != nullptr){
+                        if(speaker2 != nullptr || speaker2->isPhantom != true){
                             sampleOut2 = decorrelation.getOutputBuffer(speaker2->decorrelationOutputIdx)[io.frame()];
                             setOutput(io,speaker2->deviceChannel,io.frame(),sampleOut2 * gains[1] * xFadeGain * speaker2->speakerGain->get());
                         }
                     } else{ // don't decorrelate
+                        if(speaker1->isPhantom != true){
                         setOutput(io,speaker1->deviceChannel,io.frame(),sample * gains[0] * xFadeGain * speaker1->speakerGain->get());
+                        }
+                        if(speaker2->isPhantom != true){
                         setOutput(io,speaker2->deviceChannel,io.frame(),sample * gains[1] * xFadeGain * speaker2->speakerGain->get());
+                        }
                     }
                 }
             }
@@ -2181,6 +2313,54 @@ public:
         }
     }
 
+
+      void printGains(){
+
+          float increment = 0.03;
+          vector<int> channels = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17};
+          for (int channel: channels){
+              SpeakerGain* sg = new SpeakerGain;
+              sg->deviceChannel = channel;
+              speakerGains.push_back(sg);
+          }
+          VirtualSource* vs = sources[0];
+          float currentAzimuth = 0.0;
+
+          while (currentAzimuth < M_2PI){
+
+              vs->aziInRad = currentAzimuth;
+
+              SpeakerV *speaker1;
+              SpeakerV *speaker2;
+
+//              Vec3d gains = calcGains(layers[0],vs->aziInRad, speaker1, speaker2);
+              Vec3d gains = calcGains(layers[0],currentAzimuth, speaker1, speaker2);
+
+              for(SpeakerGain* sg : speakerGains){
+                  int sgChan = sg->deviceChannel;
+                  if(sgChan == speaker1->deviceChannel && speaker1->isPhantom != true){
+                      sg->gains.push_back(gains[0]*speaker1->speakerGain->get());
+                  }else if(sgChan == speaker2->deviceChannel && speaker2->isPhantom != true){
+                      sg->gains.push_back(gains[1]*speaker2->speakerGain->get());
+                  }else {
+                      sg->gains.push_back(0.0);
+                  }
+              }
+
+              currentAzimuth += increment;
+
+          }
+
+          for(SpeakerGain* sg: speakerGains){
+              cout << sg->deviceChannel;
+              for(float g: sg->gains){
+                  cout << ", " << g;
+              }
+              cout << endl;
+          }
+
+      }
+
     void onInit() override {
 
 // ****** 2809 ******
@@ -2243,7 +2423,47 @@ public:
         }
 //****** end Allosphere ******
 
+//2D Ring Layout
+        else if (location == 2){
+            SpeakerLayer speakerLayer;
+            speakerLayer.elevation = 0.0;
+
+            float startingAngle = 0.0f;
+            float angleInc = 22.5f;
+            float ang;
+            for (int i = 0; i < 16; i++){
+                int delay = rand() % static_cast<int>(MAX_DELAY + 1);
+                ang = startingAngle + (angleInc*i);
+                speakerLayer.l_speakers.push_back(SpeakerV(i,ang,0.0,0,5.0,0,delay));
+            }
+
+
+            //-1 for phantom channels (can remove isPhantom and just check -1)
+//            SpeakerV s(16, 175.0,0.0,0,5.0,0,0);
+//            s.isPhantom = true;
+//            speakerLayer.l_speakers.push_back(s);
+
+//            SpeakerV p(17, 185.0,0.0,0,5.0,0,0);
+//            p.isPhantom = true;
+//            speakerLayer.l_speakers.push_back(p);
+
+            layers.push_back(speakerLayer);
+
+
+
+        }
+
+
         initPanner();
+
+
+        for(SpeakerLayer &sl: layers){
+            //sl.l_enabledSpeakers.clear();
+            for(int i = 0; i < sl.l_enabledSpeakers.size(); i ++){
+                cout<< sl.l_enabledSpeakers[i]->deviceChannel;
+            }
+            cout << endl;
+        }
 
         for(SpeakerLayer &sl:layers){
             speakerCount += sl.l_speakers.size();
@@ -2345,15 +2565,32 @@ public:
         event2->addBPF(&vs->sourceWidth,0.0,{2.0,3.0});
 
         //Create some speaker groups
-        auto *speakerGroup = new SpeakerGroup("Group 1");
-        auto *speakerGroup2 = new SpeakerGroup("Group 2");
+//        auto *speakerGroup = new SpeakerGroup("Group 1");
+//        auto *speakerGroup2 = new SpeakerGroup("Group 2");
 
-        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
-        speakerGroup2->addSpeakersByChannel({1,3,5,7,9,11,13,15,17});
+//        speakerGroup->addSpeakersByChannel({0,2,4,6,8,10});
+//        speakerGroup2->addSpeakersByChannel({1,3,5,7,9,11,13,15,17});
+
+        auto *speakerGroup = new SpeakerGroup("Top");
+        auto *speakerGroup2 = new SpeakerGroup("Middle");
+        auto *speakerGroup3 = new SpeakerGroup("Bottom");
+        auto *speakerGroup4 = new SpeakerGroup("SparseMiddle");
+        auto *speakerGroup5 = new SpeakerGroup("SparserMiddle");
+
+        speakerGroup->addSpeakersByChannel({0,1,2,3,4,5,6,7,8,9,10,11});
+        speakerGroup2->addSpeakersByChannel({16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45});
+
+        speakerGroup3->addSpeakersByChannel({48,49,50,51,52,53,54,55,56,57,58,59});
+
+        speakerGroup4->addSpeakersByChannel({16,19,22,25,28,31,34,37,40,43});
+        speakerGroup5->addSpeakersByChannel({16,25,34,43});
 
         //Register the speaker groups
         speakerGroups.push_back(speakerGroup);
         speakerGroups.push_back(speakerGroup2);
+        speakerGroups.push_back(speakerGroup3);
+        speakerGroups.push_back(speakerGroup4);
+        speakerGroups.push_back(speakerGroup5);
 
         //Add gain automation of speaker groups 1 and 2 to event 3
         event3->addBPF(&speakerGroup->gain,1.0,{0.0,5.0});
@@ -2372,15 +2609,26 @@ public:
 
         events.push_back(diverge);
         events.push_back(converge);
+
+
+
+
+
     }
 
     void onCreate() override {
 
-        nav().pos(0, 1, 20);
+        //nav().pos(0, 1, 20);
+        nav().pos(0,25,0);
 
-        font.load("src/data/VeraMono.ttf", 28, 1024);
+        Vec3d face(0.0,0.0,0.0);
+        nav().faceToward(face);
+
+//        font.load("src/data/VeraMono.ttf", 28, 1024);
+        font.load("src/data/VeraMono.ttf", 38, 1024);
         font.alignCenter();
         font.write(fontMesh, "1", 0.2f);
+
 
         imguiInit();
         parameterGUI.init(0,0,false);
@@ -2443,6 +2691,13 @@ public:
                                 enabledSources += 1.0f;
                                 v->updatePosition(t);
                                 renderSample(io,v);
+                               // VirtualSource *vs = sources[0];
+                                if(loopStart){
+                                    loopStart = false;
+                                loopStartPos.x = v->aziInRad;
+                                loopStartPos.y = v->elevation;
+                                loopStartPos.z = radius;
+                                }
                             }
                         }
                 }
@@ -2507,72 +2762,81 @@ public:
         g.blendAdd();
         //g.blendModeAdd();
 
-        g.pushMatrix();
-        Mesh lineMesh;
-        lineMesh.vertex(0.0,0.0, 10.0);
-        lineMesh.vertex(0.0,0.0, -10.0);
-        lineMesh.index(0);
-        lineMesh.index(1);
-        lineMesh.primitive(Mesh::LINES);
-        g.color(1);
-        g.draw(lineMesh);
-        g.popMatrix();
+//        g.pushMatrix();
+//        Mesh lineMesh;
+//        lineMesh.vertex(0.0,0.0, 10.0);
+//        lineMesh.vertex(0.0,0.0, -10.0);
+//        lineMesh.index(0);
+//        lineMesh.index(1);
+//        lineMesh.primitive(Mesh::LINES);
+//        g.color(1);
+//        g.draw(lineMesh);
+//        g.popMatrix();
 
         static int t = 0;
         t++;
         //Draw the sources
         for(VirtualSource *v: sources){
-            Vec3d pos = ambiSphericalToOGLCart(v->aziInRad, v->elevation,radius);
-            g.pushMatrix();
-            g.translate(pos);
+            if(v->draw){
+                Vec3d pos = ambiSphericalToOGLCart(v->aziInRad, v->elevation,radius);
 
-            if(drawLabels.get()){
-                //Draw Source Index
+//                if(loopStart && (v->vsBundle.bundleIndex() == 0)){
+//                    loopStart = false;
+//                    loopStartPos = pos;
+//                }
+
                 g.pushMatrix();
-                g.color(1);
-               // g.color(0.0,0.0,1.0);
-                g.translate(0.0,0.3,0.0);
-                font.write(fontMesh,std::to_string(v->vsBundle.bundleIndex()).c_str(),0.2f);
-                g.texture();
-                font.tex.bind();
-                g.draw(fontMesh);
-                font.tex.unbind();
+                g.translate(pos);
+
+                if(drawLabels.get()){
+                    //Draw Source Index
+                    g.pushMatrix();
+                    g.color(1);
+                    // g.color(0.0,0.0,1.0);
+
+                    if(toggleLabelOrientation.get()){
+                        g.rotate(90.0, 90.0);
+                        g.translate(0.0,0.3,0.0);
+                    }else{
+                        g.translate(0.0,0.3,0.0);
+                    }
+                    //                font.write(fontMesh,std::to_string(v->vsBundle.bundleIndex()).c_str(),0.2f);
+//                    font.write(fontMesh,std::to_string(v->vsBundle.bundleIndex()).c_str(),0.4f);
+                    string sourceLabel = "S" + std::to_string(v->vsBundle.bundleIndex());
+
+                    font.write(fontMesh,sourceLabel.c_str(),0.4f);
+                    g.texture();
+                    font.tex.bind();
+                    g.draw(fontMesh);
+                    font.tex.unbind();
+                    g.popMatrix();
+                }
+
+                g.scale(0.1);
+                g.color(0.0,0.0, 1.0, 1.0);
+                g.draw(mSpeakerMesh);
                 g.popMatrix();
+
+                // Draw line
+                Mesh lineMesh;
+                lineMesh.vertex(0.0,0.0, 0.0);
+                lineMesh.vertex(pos);
+                lineMesh.index(0);
+                lineMesh.index(1);
+                lineMesh.primitive(Mesh::LINES);
+                g.color(1);
+                g.draw(lineMesh);
             }
-
-            g.scale(0.1);
-            g.color(0.0,0.0, 1.0, 1.0);
-            g.draw(mSpeakerMesh);
-            g.popMatrix();
-
-//            g.pushMatrix();
-//            g.translate(v->getSamplePlayerPhase(),2.0 + v->vsBundle.bundleIndex()*0.25,0.0);
-//            g.scale(0.3);
-//            g.draw(mSpeakerMesh);
-//            g.popMatrix();
-
-            // Draw line
-            Mesh lineMesh;
-//            lineMesh.vertex(0.0,0.0, 0.0);
-//            lineMesh.vertex(pos.x,0.0, pos.z);
-//            lineMesh.vertex(pos);
-//            lineMesh.index(0);
-//            lineMesh.index(1);
-//            lineMesh.index(1);
-//            lineMesh.index(2);
-//            lineMesh.index(2);
-//            lineMesh.index(0);
-//            lineMesh.primitive(Mesh::LINES);
-//            g.color(1);
-//            g.draw(lineMesh);
-            lineMesh.vertex(0.0,0.0, 0.0);
-            lineMesh.vertex(pos);
-            lineMesh.index(0);
-            lineMesh.index(1);
-            lineMesh.primitive(Mesh::LINES);
-            g.color(1);
-            g.draw(lineMesh);
         }
+
+        //Draw Loop Start Position
+//        g.pushMatrix();
+//        Vec3d lsp = ambiSphericalToOGLCart(loopStartPos.x,loopStartPos.y,loopStartPos.z);
+//        g.translate(lsp);
+//        g.scale(0.5);
+//        g.color(1.0,0.0, 0.0, 1.0);
+//        g.draw(mSpeakerMesh);
+//        g.popMatrix();
 
         //Draw the speakers
         for(SpeakerLayer sl: layers){
@@ -2584,11 +2848,22 @@ public:
                 if(drawLabels.get()){
                     //Draw Speaker Channel
                     g.pushMatrix();
-                    g.translate(0.0,0.1,0.0);
-                    if(!sl.l_speakers[i].isPhantom){
-                        font.write(fontMesh,sl.l_speakers[i].deviceChannelString.c_str(),0.2f);
+
+                    if(toggleLabelOrientation.get()){
+                         g.rotate(90.0,90.0);
+                        g.translate(0.0,0.3,0.0);
+
+
                     }else{
-                        font.write(fontMesh,"P",0.2f);
+                        g.translate(0.0,0.3,0.0);
+                    }
+
+
+                    //g.translate(0.0,0.1,0.0);
+                    if(!sl.l_speakers[i].isPhantom){
+                        font.write(fontMesh,sl.l_speakers[i].deviceChannelString.c_str(),0.4f);
+                    }else{
+                        font.write(fontMesh,"P",0.4f);
                     }
                     g.texture();
                     font.tex.bind();
@@ -2597,26 +2872,31 @@ public:
                     g.popMatrix();
                 }
 
+
                 float peak = 0.0;
                 if(!sl.l_speakers[i].isPhantom){
                     peak = mPeaks[devChan].load();
                 }
-                g.scale(0.04 + peak * 6);
+                g.scale(restingSpeakerSize.get() + peak * 6);
 
-//                if(sl.l_speakers[i].isPhantom){
-//                    g.color(0.0,1.0,0.0);
+                if(sl.l_speakers[i].isPhantom){
+                    g.color(0.0,1.0,0.0);
 //                }else if(devChan == 0){
 //                    g.color(1.0,0.0,0.0);
 //                }else if(devChan == 1){
 //                    g.color(0.0,0.0,1.0);
-//                }else if(!sl.l_speakers[i].enabled->get()){
-//                    g.color(0.05,0.05,0.05);
-//                }else{
-//                    g.color(1);
-//                }
-                g.color(1);
+                }else if(!sl.l_speakers[i].enabled->get()){
+                    g.color(0.2,0.2,0.2);
+            }else if(sl.l_speakers[i].speakerGain->get() < .000001){
+                    g.color(0.3,0.0,0.0);
+            }
+                else{
+                    g.color(1);
+                }
+
                 g.draw(mSpeakerMesh);
                 g.popMatrix();
+                // g.color(1);
             }
         }
         //parameterGUI.draw(g);
@@ -2628,6 +2908,7 @@ public:
             ParameterGUI::beginPanel("Speaker Groups");
             if (ImGui::Button("Close")){
                 showLoudspeakerGroups = false;
+
             }
             ImGui::Separator();
 
@@ -2834,17 +3115,23 @@ public:
         ParameterGUI::drawParameter(&masterGain);
         ParameterGUI::drawParameterBool(&stereoOutput);
         ParameterGUI::drawParameter(&stereoOutputGain);
+        ParameterGUI::drawTrigger(&gainPrinter);
+        ParameterGUI::drawTrigger(&recalcPanning);
+
         ParameterGUI::endPanel();
 
         if(showLoudspeakers){
             ParameterGUI::beginPanel("Loudspeakers");
             if (ImGui::Button("Close")){
                 showLoudspeakers = false;
+
             }
             ImGui::Separator();
 
             ParameterGUI::drawMenu(&speakerDensity);
             ParameterGUI::drawParameterBool(&drawLabels);
+            ParameterGUI::drawParameterBool(&toggleLabelOrientation);
+            ParameterGUI::drawParameter(&restingSpeakerSize);
             for(SpeakerLayer sl: layers){
                 for(SpeakerV sv: sl.l_speakers){
                     ParameterGUI::drawParameterBool(sv.enabled);
@@ -2867,6 +3154,7 @@ public:
             ParameterGUI::drawParameterBool(&src->enabled);
             ParameterGUI::drawParameterBool(&src->mute);
             ParameterGUI::drawParameterBool(&src->decorrelateSrc);
+            ParameterGUI::drawParameterBool(&src->draw);
 
             ParameterGUI::drawParameter(&src->sourceGain);
 
@@ -2903,7 +3191,10 @@ public:
                 ParameterGUI::drawParameter(&src->angFreqCycles);
                 ParameterGUI::drawParameter(&src->angFreqOffset);
                 ParameterGUI::drawParameterInt(&src->angFreqCyclesMult,"");
+                ParameterGUI::drawParameter(&src->numerator);
+                ParameterGUI::drawParameter(&src->denom);
                 ParameterGUI::drawTrigger(&src->loopLengthToRotFreq);
+                ParameterGUI::drawTrigger(&src->aziZeroResetLoop);
                 ImGui::TreePop();
             }
 
@@ -2977,6 +3268,8 @@ public:
         }
     }
 };
+
+
 
 
 int main(){
