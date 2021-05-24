@@ -26,8 +26,5 @@ build
 
 apps/
 
-allolib/
-al_ext/
-
 .DS_Store
 CMakeLists.txt.user

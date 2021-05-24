@@ -61,18 +61,18 @@ vector<string> sourceSoundNames{"SoundFile","Noise","Sine","Impulse","Saw", "Squ
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
 
-Trigger resetSamples("resetSamples","","");
-Trigger resetPosOscPhase("resetPosOscPhase","","");
+Trigger resetSamples("resetSamples","");
+Trigger resetPosOscPhase("resetPosOscPhase","");
 
-ParameterMenu setAllPosUpdate("setAllPosUpdate","",0,"");
-ParameterMenu setAllSoundFileIdx("setAllSoundFileIdx","",0,"");
+ParameterMenu setAllPosUpdate("setAllPosUpdate","",0);
+ParameterMenu setAllSoundFileIdx("setAllSoundFileIdx","",0);
 ParameterBool setAllEnabled("setAllEnabled","",0.0);
-ParameterMenu setAllPanMethod("setAllPanMethod","",0,"");
+ParameterMenu setAllPanMethod("setAllPanMethod","",0);
 Parameter setAllAzimuth("setAllAzimuth","",2.9,"",-1.0*M_PI,M_PI);
 Parameter setAllAzimuthOffsetScale("setAllAzimuthOffsetScale","",0.f,"",-1.0,1.0);
 Parameter setAllElevation("setAllElevation","",0.0,"",-1.0*M_PI_2,M_PI_2);
 Parameter setAllEleOffsetScale{"setAllEleOffsetScale","",0.0,"",-1.0,1.0};
-ParameterMenu setAllSourceSounds("setAllSourceSounds","",0,"");
+ParameterMenu setAllSourceSounds("setAllSourceSounds","",0);
 
 ParameterBool setAllMute("setAllMute","",0.0);
 Parameter setAllGain("setAllGain","",0.0,"",0.0,1.0);
@@ -91,18 +91,18 @@ ParameterInt setAllWPInc("setAllWPInc","",0,"",0, SAMPLE_RATE/2);
 Parameter setAllWPOverlap("setAllWPOverlap","",0.0,"",0.0,1.0);
 ParameterBool setAllWPUseInc("setAllWPUseInc","",1.0,"",0.0,1.0);
 ParameterInt setAllWPIncMult("setAllWPIncMult","",0,"",0,500);
-Trigger setAllWPReset("setAllWPReset","","");
+Trigger setAllWPReset("setAllWPReset","");
 
-Trigger triggerAllRamps("triggerAllRamps","","");
-Trigger setAllStartAzi("setAllStartAzi","","");
-Trigger setAllEndAzi("setAllEndAzi","","");
+Trigger triggerAllRamps("triggerAllRamps","");
+Trigger setAllStartAzi("setAllStartAzi","");
+Trigger setAllEndAzi("setAllEndAzi","");
 
-Trigger setPiano("setPiano","","");
-Trigger setMidiPiano("setMidiPiano","","");
+Trigger setPiano("setPiano","");
+Trigger setMidiPiano("setMidiPiano","");
 
 ParameterBool combineAllChannels("combineAllChannels","",0.0);
 
-ParameterMenu speakerDensity("speakerDensity","",0,"");
+ParameterMenu speakerDensity("speakerDensity","",0);
 vector<string> spkDensityMenuNames{"All", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Skip 5"};
 
 ParameterBool xFadeCh1_2("xFadeCh1_2","",0);
@@ -110,7 +110,7 @@ Parameter xFadeValue("xFadeValue","",0.0,"",0.0,M_PI_2);
 
 ParameterBool setAllDecorrelate("setAllDecorrelate","",0.0);
 ParameterInt sourcesToDecorrelate("sourcesToDecorrelate","",1,"",1,2);
-ParameterMenu decorrelationMethod("decorrelationMethod","",0,"");
+ParameterMenu decorrelationMethod("decorrelationMethod","",0);
 vector<string> decorMethodMenuNames{"Kendall", "Zotter"};
 ParameterBool configureDecorrelation("configureDecorrelation","",0.0);
 
@@ -123,7 +123,7 @@ Parameter maxTau("maxTau","",1.0,"", 0.0, 10.0);
 Parameter startPhase("startPhase","",0.0,"", 0.0, 10.0);
 Parameter phaseDev("phaseDev","",0.0,"", 0.0, 10.0);
 
-Trigger generateRandDecorSeed("generateRandDecorSeed","","");
+Trigger generateRandDecorSeed("generateRandDecorSeed","");
 
 ParameterBool drawLabels("drawLabels","",1.0);
 ParameterBool toggleLabelOrientation("toggleLabelOrientation","",1.0);
@@ -135,7 +135,7 @@ Parameter playerRateMultiplier("playerRateMultiplier","",0.002,"",0.0,0.1);
 
 ParameterInt displaySource("displaySource","",0,"",0,NUM_SOURCES-1);
 
-Trigger recalcPanning("recalcPanning","","");
+Trigger recalcPanning("recalcPanning","");
 
 int highestChannel = 0;
 int speakerCount = 0;
@@ -320,7 +320,7 @@ class Event{
 public:
     vector<BPF*> bpfs;
     vector<TriggerEvent*> triggerEvents;
-    Trigger triggerEvent{"triggerEvent","",""};
+    Trigger triggerEvent{"triggerEvent",""};
 
     string eventName;
 
@@ -738,7 +738,7 @@ public:
 
     ParameterBool draw{"draw","",0.0};
 
-    ParameterMenu positionUpdate{"positionUpdate","",0,""};
+    ParameterMenu positionUpdate{"positionUpdate","",0};
     Parameter sourceGain{"sourceGain","",0.5,"",0.0,1.0};
     Parameter aziInRad{"aziInRad","",2.9,"",-1.0*M_PI,M_PI};
     Parameter elevation{"elevation","",0.0,"",-1.0*M_PI_2,M_PI_2};
@@ -746,24 +746,24 @@ public:
     Parameter angularFreq {"angularFreq"};//Radians per second
     Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-1000.f,1000.f};
     Parameter samplePlayerRate {"samplePlayerRate","",1.f,"",1.f,1.5f};
-    ParameterMenu fileMenu{"fileMenu","",0,""};
+    ParameterMenu fileMenu{"fileMenu","",0};
 
-    Trigger triggerRamp{"triggerRamp","",""};
+    Trigger triggerRamp{"triggerRamp",""};
     Parameter rampStartAzimuth{"rampStartAzimuth","",-0.5,"",-1.0*M_PI,M_PI};
     Parameter rampEndAzimuth{"rampEndAzimuth","",0.5,"",-1.0*M_PI,M_PI};
     Parameter rampDuration{"rampDuration", "",1.0,"",0.0,10.0};
-    ParameterMenu sourceSound{"sourceSound","",0,""};
+    ParameterMenu sourceSound{"sourceSound","",0};
     ParameterInt inputChannel{"inputChannel","",0,"",0,INPUT_CHANNELS-1};
 
     Parameter sourceWidth{"sourceWidth","", M_PI/8.0f, "", 0.0f,M_2PI};
-    ParameterMenu panMethod{"panMethod","",0,""};
+    ParameterMenu panMethod{"panMethod","",0};
 
     ParameterBool scaleSrcWidth{"scaleSrcWidth","",0};
 
     Parameter soundFileStartPhase{"soundFileStartPhase","",0.0,"",0.0,1.0};
     Parameter soundFileDuration{"soundFileDuration","",1.0,"",0.0,1.0};
 
-    Trigger loopLengthToRotFreq{"loopLengthToRotFreq","",""};
+    Trigger loopLengthToRotFreq{"loopLengthToRotFreq",""};
     Parameter angFreqOffset{"angFreqOffset","",0.0,"",-1.0,1.0};
     ParameterInt angFreqCyclesMult{"angFreqCyclesMult","",1,"",1,100};
 
@@ -772,7 +772,7 @@ public:
     Parameter numerator{"numerator","",1.0,"",-10.0,10.0};// = 1.0;
     Parameter denom{"denom","",1.0,"",-10.0,10.0};
 
-    Trigger aziZeroResetLoop{"aziZeroResetLoop","",""};
+    Trigger aziZeroResetLoop{"aziZeroResetLoop",""};
 
     VirtualSource(){
 
@@ -1258,7 +1258,7 @@ vector<SpeakerGroup *> speakerGroups;
 
 
 //Vec3d calcGains(SpeakerLayer &sl, const float &srcAzi, SpeakerV* &speakerChan1, SpeakerV* &speakerChan2);
-Trigger gainPrinter("gainPrinter","","");
+Trigger gainPrinter("gainPrinter","");
 
 struct SpeakerGain {
     int deviceChannel;
@@ -1338,7 +1338,7 @@ public:
     Font font;
     Mesh fontMesh;
 
-    std::string pathToInterfaceJs = "interface.js";
+    //std::string pathToInterfaceJs = "interface.js";
     //HtmlInterfaceServer htmlServer{pathToInterfaceJs};
 
     OutputRecorder soundFileRecorder;
