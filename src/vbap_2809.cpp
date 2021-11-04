@@ -133,6 +133,9 @@ ParameterBool stereoOutput("stereoOutput","",0.0);
 Parameter stereoOutputGain("stereoOutputGain","",0.2,"",0.0,1.0);
 Parameter playerRateMultiplier("playerRateMultiplier","",0.002,"",0.0,0.1);
 
+ParameterBool monoOutput("monoOutput","",0.0);
+Parameter monoOutputGain("monoOutputGain","",0.2,"",0.0,1.0);
+
 ParameterInt displaySource("displaySource","",0,"",0,NUM_SOURCES-1);
 
 Trigger recalcPanning("recalcPanning","");
@@ -710,7 +713,7 @@ public:
 
 
     Parameter posOscPhase{"posOscPhase","", 0.0,"",0.0,1.0};
-    Parameter posOscFreq{"posOscFreq","",1.0,"",0.0,5.0};
+    Parameter posOscFreq{"posOscFreq","",1.0,"",0.0,100.0};
     Parameter posOscAmp{"posOscAmp","",1.0,"",0.0,M_PI};
 
     Parameter centerAzi{"centerAzi","",0.0,"",-1.0*M_PI,M_PI};// = 0.0;
@@ -1361,7 +1364,7 @@ public:
             sender.send("/files",fPath);
         }
 
-        parameterGUI << soundOn << masterGain << stereoOutput << resetPosOscPhase << sampleWise << combineAllChannels << xFadeCh1_2 << xFadeValue << sourcesToDecorrelate << decorrelationMethod << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
+        parameterGUI << soundOn << masterGain << stereoOutput << monoOutput << resetPosOscPhase << sampleWise << combineAllChannels << xFadeCh1_2 << xFadeValue << sourcesToDecorrelate << decorrelationMethod << generateRandDecorSeed << maxJump << phaseFactor << deltaFreq << maxFreqDev << maxTau << startPhase << phaseDev;
 
         //xsetAllBundle << setAllEnabled << setAllDecorrelate << setAllPanMethod << setAllPosUpdate << setAllSoundFileIdx <<setAllAzimuth << setAllAzimuthOffsetScale << playerRateMultiplier << useRateMultiplier << setPlayerPhase << triggerAllRamps << setAllStartAzi << setAllEndAzi << setAllDurations;
         //parameterGUI << xsetAllBundle;
@@ -1392,6 +1395,8 @@ public:
         masterGain.displayName("Master Gain");
         stereoOutput.displayName("Stereo Output");
         stereoOutputGain.displayName("Stereo Output Gain");
+        monoOutput.displayName("Mono Output");
+        monoOutputGain.displayName("Mono Output Gain");
         xFadeCh1_2.displayName("Enabled");
         xFadeValue.displayName("value");
 
@@ -2735,17 +2740,49 @@ public:
 
             float stereoScale = stereoOutputGain.get();
 
+
+            for (int i = 0; i < io.framesPerBuffer(); i++) { // scale channels 0 and 1
+                io.out(0,i) = io.out(0,i)*stereoScale;
+                io.out(1,i) = io.out(1, i) * stereoScale;
+
+            }
+
             for(SpeakerLayer sl:layers){
                 for (int speaker = 0; speaker < sl.l_speakers.size(); speaker++) {
                     if(!sl.l_speakers[speaker].isPhantom){
                         int deviceChannel = sl.l_speakers[speaker].deviceChannel;
                         if(deviceChannel > 1 && deviceChannel < io.channelsOut()){
-                            for (int i = 0; i < io.framesPerBuffer(); i++) {
+                            for (int i = 0; i < io.framesPerBuffer(); i++) { //dont copy channels 0 and 1 twice
                                 if(deviceChannel % 2 == 0){
                                     io.out(0,i) += io.out(deviceChannel, i) * stereoScale;
                                 }else{
                                     io.out(1,i) += io.out(deviceChannel, i) * stereoScale;
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if(monoOutput.get()){
+
+            float monoScale = monoOutputGain.get();
+
+            for (int i = 0; i < io.framesPerBuffer(); i++) { //scale channel 0 and 1
+                io.out(0,i) = io.out(0,i)*monoScale  + io.out(1,i)*monoScale;
+                io.out(1,i) = 0.0; //zero out 1
+            }
+
+            for(SpeakerLayer sl:layers){
+                for (int speaker = 0; speaker < sl.l_speakers.size(); speaker++) {
+                    if(!sl.l_speakers[speaker].isPhantom){
+                        int deviceChannel = sl.l_speakers[speaker].deviceChannel;
+                        if(deviceChannel > 1 && deviceChannel < io.channelsOut()){ // dont copy channel 0 and 1 twice
+                            for (int i = 0; i < io.framesPerBuffer(); i++) {
+                                io.out(0,i) += io.out(deviceChannel, i) * monoScale;
+                                //io.out(1,i) += io.out(deviceChannel, i) * monoScale;
+
                             }
                         }
                     }
@@ -3115,6 +3152,8 @@ public:
         ParameterGUI::drawParameter(&masterGain);
         ParameterGUI::drawParameterBool(&stereoOutput);
         ParameterGUI::drawParameter(&stereoOutputGain);
+        ParameterGUI::drawParameterBool(&monoOutput);
+        ParameterGUI::drawParameter(&monoOutputGain);
         ParameterGUI::drawTrigger(&gainPrinter);
         ParameterGUI::drawTrigger(&recalcPanning);
 
