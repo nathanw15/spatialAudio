@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere
-const int location = 2;
+const int location = 0;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -128,6 +128,8 @@ Trigger generateRandDecorSeed("generateRandDecorSeed","");
 ParameterBool drawLabels("drawLabels","",1.0);
 ParameterBool toggleLabelOrientation("toggleLabelOrientation","",1.0);
 Parameter restingSpeakerSize("restingSpeakerSize","",0.2,"",0.0,1.0);
+Parameter gainCurveWidth("gainCurveWidth","",1.0,"",0.1,1.0);
+
 
 ParameterBool stereoOutput("stereoOutput","",0.0);
 Parameter stereoOutputGain("stereoOutputGain","",0.2,"",0.0,1.0);
@@ -747,7 +749,7 @@ public:
     Parameter elevation{"elevation","",0.0,"",-1.0*M_PI_2,M_PI_2};
     Parameter oscFreq{"oscFreq","",440.0,"",0.0,2000.0f};
     Parameter angularFreq {"angularFreq"};//Radians per second
-    Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-1000.f,1000.f};
+    Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-200.f,200.f};
     Parameter samplePlayerRate {"samplePlayerRate","",1.f,"",1.f,1.5f};
     ParameterMenu fileMenu{"fileMenu","",0};
 
@@ -1810,6 +1812,7 @@ public:
                     }
                 }
             }
+            initPanner();
         });
 
         parameterServer().sendAllParameters("127.0.0.1", 9011);
@@ -1915,11 +1918,6 @@ public:
 
                 int chan2Idx;
 
-//                if(i+1 == sl.l_enabledSpeakers.size()){
-//                    chan2Idx = 0;
-//                }else{
-//                    chan2Idx = i+1;
-//                }
 
                 if(i+1 == sl.l_enabledSpeakers.size()){
                     chan2Idx = 0;
@@ -1927,7 +1925,6 @@ public:
                     chan2Idx = i+1;
                 }
 
-//                speakerChan2 = sl.l_enabledSpeakers[chan2Idx]->deviceChannel;
                 speakerChan2 = sl.l_enabledSpeakers[chan2Idx];
 
                 if(srcAzi == sl.l_enabledSpeakers[i]->aziInRad ){
@@ -1940,7 +1937,6 @@ public:
                     break;
                 }
 
- //               else if(srcAzi > enabledSpeakers[i]->aziInRad && srcAzi < enabledSpeakers[chan2Idx]->aziInRad){
                     createMatrix(sl.l_enabledSpeakers[i]->vec(),sl.l_enabledSpeakers[chan2Idx]->vec());
                     invert(matrix);
                     for (unsigned i = 0; i < 2; i++){
@@ -1956,12 +1952,7 @@ public:
                     } else{
                         gains.x = gains.y = 0.0;
                     }
-//                }
-
-
             }
-
-           //enabledSpeakersLock.unlock();
 
         }else{
 //            speakerChan1 = speakerChan2 = -1;
@@ -2374,8 +2365,13 @@ public:
             SpeakerLayer speakerLayer;
             speakerLayer.elevation = 0.0;
 
-            float startingAngle = 170.0f;
-            float angleInc = 11.0f;
+            //for using phantom channels
+//            float startingAngle = 170.0f;
+//            float angleInc = 11.0f;
+
+            float startingAngle = 180.0f;
+            float angleInc = 11.25f;
+
             float ang;
             for (int i = 0; i < 32; i++){
                 int delay = rand() % static_cast<int>(MAX_DELAY + 1);
@@ -2384,13 +2380,13 @@ public:
             }
 
             //-1 for phantom channels (can remove isPhantom and just check -1)
-            SpeakerV s(-1, startingAngle+angleInc,0.0,0,5.0,0,0);
-            s.isPhantom = true;
-            speakerLayer.l_speakers.push_back(s);
+//            SpeakerV s(-1, startingAngle+angleInc,0.0,0,5.0,0,0);
+//            s.isPhantom = true;
+//            speakerLayer.l_speakers.push_back(s);
 
-            SpeakerV p(-1, ang - angleInc,0.0,0,5.0,0,0);
-            p.isPhantom = true;
-            speakerLayer.l_speakers.push_back(p);
+//            SpeakerV p(-1, ang - angleInc,0.0,0,5.0,0,0);
+//            p.isPhantom = true;
+//            speakerLayer.l_speakers.push_back(p);
 
             layers.push_back(speakerLayer);
         }
@@ -2616,7 +2612,8 @@ public:
         events.push_back(converge);
 
 
-
+        //Set Defaults
+        setAllSourceSounds.set(2);
 
 
     }
@@ -3171,6 +3168,7 @@ public:
             ParameterGUI::drawParameterBool(&drawLabels);
             ParameterGUI::drawParameterBool(&toggleLabelOrientation);
             ParameterGUI::drawParameter(&restingSpeakerSize);
+            ParameterGUI::drawParameter(&gainCurveWidth);
             for(SpeakerLayer sl: layers){
                 for(SpeakerV sv: sl.l_speakers){
                     ParameterGUI::drawParameterBool(sv.enabled);
