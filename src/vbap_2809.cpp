@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere
-const int location = 0;
+const int location = 2;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -747,7 +747,7 @@ public:
     Parameter sourceGain{"sourceGain","",0.5,"",0.0,1.0};
     Parameter aziInRad{"aziInRad","",2.9,"",-1.0*M_PI,M_PI};
     Parameter elevation{"elevation","",0.0,"",-1.0*M_PI_2,M_PI_2};
-    Parameter oscFreq{"oscFreq","",440.0,"",0.0,2000.0f};
+    Parameter oscFreq{"oscFreq","",500.0,"",0.0,2000.0f};
     Parameter angularFreq {"angularFreq"};//Radians per second
     Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-200.f,200.f};
     Parameter samplePlayerRate {"samplePlayerRate","",1.f,"",1.f,1.5f};
@@ -2778,6 +2778,7 @@ public:
                         if(deviceChannel > 1 && deviceChannel < io.channelsOut()){ // dont copy channel 0 and 1 twice
                             for (int i = 0; i < io.framesPerBuffer(); i++) {
                                 io.out(0,i) += io.out(deviceChannel, i) * monoScale;
+                                io.out(deviceChannel, i) = 0.0;
                                 //io.out(1,i) += io.out(deviceChannel, i) * monoScale;
 
                             }
