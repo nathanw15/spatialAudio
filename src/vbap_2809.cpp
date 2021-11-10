@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere
-const int location = 2;
+const int location = 0;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -104,6 +104,11 @@ ParameterBool combineAllChannels("combineAllChannels","",0.0);
 
 ParameterMenu speakerDensity("speakerDensity","",0);
 vector<string> spkDensityMenuNames{"All", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Skip 5"};
+
+ParameterMenu speakerMuting("speakerMuting","",0);
+vector<string> speakerMutingNames{"None", "All", "Skip 1", "Skip 2", "Skip 3", "Skip 4"};
+
+ParameterInt densityLevel("densityLevel","",0,"",0,5);
 
 ParameterBool xFadeCh1_2("xFadeCh1_2","",0);
 Parameter xFadeValue("xFadeValue","",0.0,"",0.0,M_PI_2);
@@ -1134,6 +1139,8 @@ public:
             initPanner(); //TODO: enabled is set after this. initPanner Should be called after this callback not in it.
         });
 
+
+
         string gainTag = "speaker" + deviceChannelString + "/speakerGain";
         speakerGain = new Parameter(gainTag,"",1.0,"",0.0,1.0);
         //paramServer.registerParameter(*enabled);
@@ -1462,8 +1469,12 @@ public:
         setAllPosUpdate.setElements(posUpdateNames);
         setAllSoundFileIdx.setElements(files);
         setAllSourceSounds.setElements(sourceSoundNames);
-        speakerDensity.setElements(spkDensityMenuNames);
+
         decorrelationMethod.setElements(decorMethodMenuNames);
+
+
+        speakerDensity.setElements(spkDensityMenuNames);
+        speakerMuting.setElements(speakerMutingNames);
 
         setAllMute.registerChangeCallback([&](float val){
             for(VirtualSource *v: sources){
@@ -1813,6 +1824,70 @@ public:
                 }
             }
             initPanner();
+        });
+
+
+
+        densityLevel.registerChangeCallback([&](float val){
+            for(SpeakerLayer& sl: layers){
+                for(int i = 0; i < sl.l_speakers.size(); i++){
+                    SpeakerV v = sl.l_speakers[i];
+                    if(v.deviceChannel != -1){
+                        v.enabled->setNoCalls(1.0f);
+                    }
+                }
+
+                vector<int> speakersToDisable;// = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
+
+                if(val== 0.0){
+                    break;
+                }else if(val == 1.0){
+                    speakersToDisable = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
+                }else if(val == 2.0){
+                    speakersToDisable = {1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,22,23,25,26,27,29,30,31};
+                }else if(val == 3.0){
+                    speakersToDisable = {1,2,3,4,5,6,7,9,10,11,12,13,14,15,17,18,19,20,21,22,23,25,26,27,28,29,30,31};
+                }else if(val == 4.0){
+                    speakersToDisable = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
+                }else{
+                    break;
+                }
+
+                for(int i = 0; i < speakersToDisable.size(); i++){
+                    sl.l_speakers[speakersToDisable[i]].enabled->setNoCalls(0.0);
+                }
+
+            }
+
+
+
+            initPanner();
+        });
+
+        speakerMuting.registerChangeCallback([&](float val){
+
+            int menuIndex = (int)val;
+
+            for(SpeakerLayer& sl: layers){
+                for(int i = 0; i < sl.l_speakers.size(); i++){
+                    SpeakerV v = sl.l_speakers[i];
+                    if(v.deviceChannel != -1){
+                        if(menuIndex == 0){
+                            v.speakerGain->set(1.0);
+                        }else if(menuIndex == 1){
+                            v.speakerGain->set(0.0);
+                        }else{
+                            int tempVal = v.deviceChannel % (menuIndex);
+                            if(tempVal == 0){
+                                v.speakerGain->set(1.0);
+                            }else {
+                                v.speakerGain->set(0.0);
+                            }
+                        }
+                    }
+                }
+            }
+            //initPanner();
         });
 
         parameterServer().sendAllParameters("127.0.0.1", 9011);
@@ -2614,6 +2689,7 @@ public:
 
         //Set Defaults
         setAllSourceSounds.set(2);
+        setAllPosUpdate.set(2);
 
 
     }
@@ -3166,6 +3242,8 @@ public:
             ImGui::Separator();
 
             ParameterGUI::drawMenu(&speakerDensity);
+            ParameterGUI::drawMenu(&speakerMuting);
+            ParameterGUI::drawParameterInt(&densityLevel,"");
             ParameterGUI::drawParameterBool(&drawLabels);
             ParameterGUI::drawParameterBool(&toggleLabelOrientation);
             ParameterGUI::drawParameter(&restingSpeakerSize);
