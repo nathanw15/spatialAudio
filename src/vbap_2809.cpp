@@ -104,11 +104,12 @@ ParameterBool combineAllChannels("combineAllChannels","",0.0);
 
 ParameterMenu speakerDensity("speakerDensity","",0);
 vector<string> spkDensityMenuNames{"All", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Skip 5"};
+ParameterInt densityLevel("densityLevel","",0,"",0,5);
 
 ParameterMenu speakerMuting("speakerMuting","",0);
 vector<string> speakerMutingNames{"None", "All", "Skip 1", "Skip 2", "Skip 3", "Skip 4"};
+ParameterInt mutingLevel("mutingLevel","",0,"",0,5);
 
-ParameterInt densityLevel("densityLevel","",0,"",0,5);
 
 ParameterBool xFadeCh1_2("xFadeCh1_2","",0);
 Parameter xFadeValue("xFadeValue","",0.0,"",0.0,M_PI_2);
@@ -858,6 +859,10 @@ public:
             }
         });
 
+        panMethod.registerChangeCallback([&](float val){
+            cout << "Pan Method Changed to: " << val << endl;
+        });
+
         denom.registerChangeCallback([&](float val){
             if(val != 0.0){
            angFreqCycles.set((numerator.get()*(1.0/(float)samplePlayer.period()))/val);
@@ -1386,12 +1391,12 @@ public:
             //parameterServer() << newVS->sourceGain << newVS->centerAzi << newVS->centerEle;
         }
 
-//        parameterServer() << soundOn << resetPosOscPhase
-//                          <<  masterGain << setAllDecorrelate
-//                          << decorrelationMethod << speakerDensity << drawLabels
-//                          << xFadeCh1_2 << xFadeValue << generateRandDecorSeed
-//                          << maxJump << phaseFactor << deltaFreq << maxFreqDev
-//                          << maxTau << startPhase << phaseDev;
+        parameterServer() << soundOn << resetPosOscPhase
+                          <<  masterGain << setAllDecorrelate
+                          << decorrelationMethod << speakerDensity << drawLabels
+                          << xFadeCh1_2 << xFadeValue << generateRandDecorSeed
+                          << maxJump << phaseFactor << deltaFreq << maxFreqDev
+                          << maxTau << startPhase << phaseDev;
 
         //example with set all
         parameterServer() << setAllGain << setPlayerPhase << playerRateMultiplier
@@ -1856,12 +1861,40 @@ public:
                 for(int i = 0; i < speakersToDisable.size(); i++){
                     sl.l_speakers[speakersToDisable[i]].enabled->setNoCalls(0.0);
                 }
-
             }
-
-
-
             initPanner();
+        });
+
+        mutingLevel.registerChangeCallback([&](float val){
+            for(SpeakerLayer& sl: layers){
+                for(int i = 0; i < sl.l_speakers.size(); i++){
+                    SpeakerV v = sl.l_speakers[i];
+                    if(v.deviceChannel != -1){
+                        v.speakerGain->set(1.0);
+                    }
+                }
+
+                vector<int> speakersToMute;// = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
+
+                if(val== 0.0){
+                    break;
+                }else if(val == 1.0){
+                    speakersToMute = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
+                }else if(val == 2.0){
+                    speakersToMute = {1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,22,23,25,26,27,29,30,31};
+                }else if(val == 3.0){
+                    speakersToMute = {1,2,3,4,5,6,7,9,10,11,12,13,14,15,17,18,19,20,21,22,23,25,26,27,28,29,30,31};
+                }else if(val == 4.0){
+                    speakersToMute = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
+                }else{
+                    break;
+                }
+
+                for(int i = 0; i < speakersToMute.size(); i++){
+                    sl.l_speakers[speakersToMute[i]].speakerGain->set(0.0);
+                }
+            }
+            //initPanner();
         });
 
         speakerMuting.registerChangeCallback([&](float val){
@@ -2828,9 +2861,12 @@ public:
                             for (int i = 0; i < io.framesPerBuffer(); i++) { //dont copy channels 0 and 1 twice
                                 if(deviceChannel % 2 == 0){
                                     io.out(0,i) += io.out(deviceChannel, i) * stereoScale;
+
                                 }else{
                                     io.out(1,i) += io.out(deviceChannel, i) * stereoScale;
+
                                 }
+                                io.out(deviceChannel, i) = 0.0;
                             }
                         }
                     }
@@ -3242,8 +3278,10 @@ public:
             ImGui::Separator();
 
             ParameterGUI::drawMenu(&speakerDensity);
-            ParameterGUI::drawMenu(&speakerMuting);
             ParameterGUI::drawParameterInt(&densityLevel,"");
+            ParameterGUI::drawMenu(&speakerMuting);
+            ParameterGUI::drawParameterInt(&mutingLevel,"");
+
             ParameterGUI::drawParameterBool(&drawLabels);
             ParameterGUI::drawParameterBool(&toggleLabelOrientation);
             ParameterGUI::drawParameter(&restingSpeakerSize);
