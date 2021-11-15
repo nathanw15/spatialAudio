@@ -750,6 +750,10 @@ public:
     ParameterBool draw{"draw","",0.0};
 
     ParameterMenu positionUpdate{"positionUpdate","",0};
+
+    //Using this because the parameter sometimes uses its cached value
+    int positionUpdateStore = 0;
+
     Parameter sourceGain{"sourceGain","",0.5,"",0.0,1.0};
     Parameter aziInRad{"aziInRad","",2.9,"",-1.0*M_PI,M_PI};
     Parameter elevation{"elevation","",0.0,"",-1.0*M_PI_2,M_PI_2};
@@ -764,10 +768,15 @@ public:
     Parameter rampEndAzimuth{"rampEndAzimuth","",0.5,"",-1.0*M_PI,M_PI};
     Parameter rampDuration{"rampDuration", "",1.0,"",0.0,10.0};
     ParameterMenu sourceSound{"sourceSound","",0};
+
+    int sourceSoundStore = 0;
+
     ParameterInt inputChannel{"inputChannel","",0,"",0,INPUT_CHANNELS-1};
 
     Parameter sourceWidth{"sourceWidth","", M_PI/8.0f, "", 0.0f,M_2PI};
     ParameterMenu panMethod{"panMethod","",0};
+
+    int panMethodStore = 0;
 
     ParameterBool scaleSrcWidth{"scaleSrcWidth","",0};
 
@@ -785,8 +794,15 @@ public:
 
     Trigger aziZeroResetLoop{"aziZeroResetLoop",""};
 
+    //For finding the source of clicks.
+    float previousSampleValue = 0.0;
+
     VirtualSource(){
 
+
+        positionUpdateStore = positionUpdate.get();
+        sourceSoundStore = sourceSound.get();
+        panMethodStore = panMethod.get();
 
         enabled.displayName("Enabled");
         mute.displayName("Mute");
@@ -861,7 +877,20 @@ public:
 
         panMethod.registerChangeCallback([&](float val){
             cout << "Pan Method Changed to: " << val << endl;
+            panMethodStore = val;
         });
+
+        positionUpdate.registerChangeCallback([&](float val){
+            cout << "Position Method Changed to: " << val << endl;
+            positionUpdateStore = val;
+        });
+
+        sourceSound.registerChangeCallback([&](float val){
+
+            sourceSoundStore = val;
+        });
+
+
 
         denom.registerChangeCallback([&](float val){
             if(val != 0.0){
@@ -880,6 +909,7 @@ public:
         });
 
         aziZeroResetLoop.registerChangeCallback([&](float val){
+            cout << "aziZeroResetLoop Called" << endl;
             aziInRad.set(0.0);
             samplePlayer.reset();
         });
@@ -902,6 +932,7 @@ public:
             val += aziOffset*aziOffsetScale;
             //wrapValues(val);
            //aziInRad = val;
+            cout << "centerAzi Called" << endl;
             aziInRad.set(val);
         });
 
@@ -910,6 +941,7 @@ public:
             val += centerAzi;
             //wrapValues(val);
            //aziInRad = val;
+            cout << "aziOffset Called" << endl;
             aziInRad.set(val);
         });
 
@@ -918,6 +950,7 @@ public:
            val += centerAzi;
            //wrapValues(val);
           //aziInRad = val;
+           cout << "aziOffsetScale Called" << endl;
            aziInRad.set(val);
         });
 
@@ -959,6 +992,7 @@ public:
         });
 
         aziInRad.setProcessingCallback([&](float val){
+            //cout << "aziInRad processing callback" << endl;
             wrapValues(val);
             return val;
         });
@@ -1002,24 +1036,32 @@ public:
 
     void updatePosition(unsigned int sampleNumber){
 
-        switch ((int)positionUpdate.get()) {
+        //switch ((int)positionUpdate.get()) {
+
+        //switch (positionUpdate.get()) { //positionUpdate sometimes switches values to a value of the disabled sources...
+        switch (positionUpdateStore) {
         case 0:
             break;
         case 1:
+            //cout << "Source Ramp set" << endl;
             aziInRad.set(sourceRamp.next(sampleNumber));
             break;
         case 2: {
             float aziDelta = angularFreq.get()*(sampleNumber - previousSamp)/SAMPLE_RATE;
+            //cout << "Moving SET VS Bundle: " << vsBundle.bundleIndex() << endl;
             aziInRad.set(aziInRad.get()+aziDelta);
             previousSamp = sampleNumber;
             break;
         }
         case 3:{
             float temp = centerAzi + (aziOffset* aziOffsetScale) + (positionOsc() * posOscAmp.get());
+            //cout << "Sine set" << endl;
             wrapValues(temp); //wrapValues is also called by aziInRad callback...
             aziInRad.set(temp);
+            break;
         }
         default:
+            cout << "Default position update called" << endl;
             break;
         }
     }
@@ -1028,7 +1070,8 @@ public:
 
         float sample;
 
-        switch ((int)sourceSound.get() ) {
+//        switch ((int)sourceSound.get() ) {
+        switch (sourceSoundStore) {
         case 0:
             if(samplePlayer.done()){
                 samplePlayer.reset();
@@ -2157,7 +2200,7 @@ public:
             }
         }
 
-        if(vs->panMethod.get() == 0){ // VBAP
+        if(vs->panMethodStore == 0){ // VBAP
 
             std::vector<float> layerGains(layers.size(),0.0);
 
@@ -2221,7 +2264,12 @@ public:
                         }
                     } else{ // don't decorrelate
                         if(speaker1->isPhantom != true){
-                        setOutput(io,speaker1->deviceChannel,io.frame(),sample * gains[0] * xFadeGain * speaker1->speakerGain->get());
+
+                            if(abs(sample - vs->previousSampleValue) > 0.02){
+                                cout << "Disc... Azi: " << vs->aziInRad << endl;
+                            }
+                            vs->previousSampleValue = sample;
+                            setOutput(io,speaker1->deviceChannel,io.frame(),sample * gains[0] * xFadeGain * speaker1->speakerGain->get());
                         }
                         if(speaker2->isPhantom != true){
                         setOutput(io,speaker2->deviceChannel,io.frame(),sample * gains[1] * xFadeGain * speaker2->speakerGain->get());
@@ -2230,7 +2278,7 @@ public:
                 }
             }
 
-        }else if(vs->panMethod.get()==1 || vs->panMethod.get() == 2){ //Skirt and snap source width
+        }else if(vs->panMethodStore==1 || vs->panMethodStore == 2){ //Skirt and snap source width
 
             std::vector<float> gains(highestChannel+1,0.0);
             float gainsAccum = 0.0;
@@ -2245,7 +2293,7 @@ public:
                         int speakerChannel = sl.l_speakers[i].deviceChannel;
                         float gain = calcSpeakerSkirtGains(vs->aziInRad, vs->elevation,vs->sourceWidth,sl.l_speakers[i].aziInRad, sl.elevation);
 
-                        if(vs->panMethod.get() == 2 && gain > 0.0){
+                        if(vs->panMethodStore == 2 && gain > 0.0){
                             gain = 1.0;
                         }
 
@@ -2324,7 +2372,7 @@ public:
 
 //        }
 
-        else if(vs->panMethod.get() == 3){ //Snap to Nearest Speaker
+        else if(vs->panMethodStore == 3){ //Snap to Nearest Speaker
             float smallestAngle = M_2PI;
             int smallestAngleSpkIdx = -1;
             int smallestAngleLayerIdx = -1;
@@ -2381,7 +2429,7 @@ public:
 //                setOutput(io,speakerChannel,io.frame(),sample * xFadeGain);
 //            }
 
-        }else if(vs->panMethod.get() == 4){ //Snap With Fade
+        }else if(vs->panMethodStore == 4){ //Snap With Fade
 //            float smallestAngle = M_2PI;
 //            int smallestAngleSpkIdx = -1;
 //            for (int i = 0; i < speakers.size(); i++){
@@ -2792,13 +2840,13 @@ public:
 
                 ++t;
 
-                for(Event *e: events){
-                    e->processEvent(t);
-                }
+//                for(Event *e: events){
+//                    e->processEvent(t);
+//                }
 
                 if(sampleWise.get()){
                         for(VirtualSource *v: sources){
-                            if(v->enabled){
+                            if(v->enabled.get()){
                                 enabledSources += 1.0f;
                                 v->updatePosition(t);
                                 renderSample(io,v);
@@ -2920,8 +2968,8 @@ public:
 //        g.draw(lineMesh);
 //        g.popMatrix();
 
-        static int t = 0;
-        t++;
+//        static int t = 0;
+//        t++;
         //Draw the sources
         for(VirtualSource *v: sources){
             if(v->draw){
