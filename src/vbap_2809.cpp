@@ -148,6 +148,14 @@ ParameterInt displaySource("displaySource","",0,"",0,NUM_SOURCES-1);
 
 Trigger recalcPanning("recalcPanning","");
 
+Trigger densityChange("densityChange","");
+vector<int> currentLayout;
+vector<int>targetLayout = {1,2,3};
+vector<int> spkInBothLayouts;
+ParameterBool changingDensity("changingDensity","",0);
+//bool changingDensity = false;
+float srcSpkPosTolerance = 0.001;
+
 int highestChannel = 0;
 int speakerCount = 0;
 
@@ -1372,6 +1380,87 @@ vector<SpeakerGain*> speakerGains;
 
 //}
 
+//vector<int> currentLayout;
+//vector<int>targetLayout = {1,2,3};
+//vector<int> spkInBothLayouts;
+//bool changingDensity = false;
+//float srcSpkPosTolerance = 0.1;
+
+SpeakerV* getSpeakerFromChanNum(vector<SpeakerV*> speakersToCheck, int deviceChannel){
+    for(SpeakerV *v:speakersToCheck){
+        if(v->deviceChannel == deviceChannel){
+            return v;
+        }
+
+    }
+    return nullptr;
+}
+
+
+void changeDensity(){
+    //changingDensity = true;
+
+    currentLayout.clear();
+    spkInBothLayouts.clear();
+    //Only for 2D layout for now
+    for(SpeakerV *s:layers[0].l_enabledSpeakers){
+        currentLayout.push_back(s->deviceChannel);
+    }
+
+    for(int i = 0; i < currentLayout.size(); i++){
+        for (int j = 0; j < targetLayout.size(); j++){
+            if(currentLayout[i] == targetLayout[j]){
+                spkInBothLayouts.push_back(currentLayout[i]);
+            }
+        }
+    }
+
+    if(spkInBothLayouts.size() > 0){
+        cout << "spkInBothLayouts: ";
+        for(int i = 0; i < spkInBothLayouts.size();i++){
+            cout << " " << spkInBothLayouts[i];
+        }
+        cout << endl;
+        changingDensity.set(1.0);
+    }else{
+        cout << "No common speakers in current and target layouts" << endl;
+    }
+
+
+}
+
+void tryDensityChange(){
+    if(changingDensity.get()){
+        //Only for 2D layout now
+        VirtualSource *v = sources[0];
+        SpeakerV *s;
+        if(v->enabled.get()){
+            for(int i = 0; i < spkInBothLayouts.size(); i++){
+                s = getSpeakerFromChanNum(layers[0].l_enabledSpeakers, spkInBothLayouts[i]);
+                if(s != nullptr){
+                    if(abs(v->aziInRad.get() - s->aziInRad) < srcSpkPosTolerance){
+                        for(SpeakerV &spk:layers[0].l_speakers){
+                            spk.enabled->setNoCalls(0.0);
+                            for(int j = 0; j < targetLayout.size(); j++){
+                                if(spk.deviceChannel == targetLayout[j]){
+                                    spk.enabled->setNoCalls(1.0);
+                                    break;
+                                }
+                            }
+                        }
+//                        changingDensity = false;
+                        changingDensity.set(0.0);
+                        initPanner();
+                        break;
+                    }
+                }
+            }
+
+        }
+    }
+
+    //return changingDensity;
+}
 
 
 
@@ -1878,34 +1967,51 @@ public:
 
         densityLevel.registerChangeCallback([&](float val){
             for(SpeakerLayer& sl: layers){
-                for(int i = 0; i < sl.l_speakers.size(); i++){
-                    SpeakerV v = sl.l_speakers[i];
-                    if(v.deviceChannel != -1){
-                        v.enabled->setNoCalls(1.0f);
-                    }
-                }
+//                for(int i = 0; i < sl.l_speakers.size(); i++){
+//                    SpeakerV v = sl.l_speakers[i];
+//                    if(v.deviceChannel != -1){
+//                        v.enabled->setNoCalls(1.0f);
+//                    }
+//                }
 
+                //cout << "densityLevel callback" << endl;
                 vector<int> speakersToDisable;// = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
 
                 if(val== 0.0){
+                    targetLayout.clear();
+                    targetLayout = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
                     break;
                 }else if(val == 1.0){
-                    speakersToDisable = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
+                    //speakersToDisable = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
+                    targetLayout.clear();
+                    targetLayout = {0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30};
+                   break;
                 }else if(val == 2.0){
-                    speakersToDisable = {1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,22,23,25,26,27,29,30,31};
+                    //speakersToDisable = {1,2,3,5,6,7,9,10,11,13,14,15,17,18,19,21,22,23,25,26,27,29,30,31};
+                    targetLayout.clear();
+                    targetLayout = {0,4,8,12,16,20,24,28};
+                    break;
                 }else if(val == 3.0){
-                    speakersToDisable = {1,2,3,4,5,6,7,9,10,11,12,13,14,15,17,18,19,20,21,22,23,25,26,27,28,29,30,31};
+                    //speakersToDisable = {1,2,3,4,5,6,7,9,10,11,12,13,14,15,17,18,19,20,21,22,23,25,26,27,28,29,30,31};
+                    targetLayout.clear();
+                    targetLayout = {0,8,16,24};
+                    break;
                 }else if(val == 4.0){
-                    speakersToDisable = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
+                    //speakersToDisable = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
+                    targetLayout.clear();
+                    targetLayout = {0,16};
+                    break;
                 }else{
                     break;
                 }
 
-                for(int i = 0; i < speakersToDisable.size(); i++){
-                    sl.l_speakers[speakersToDisable[i]].enabled->setNoCalls(0.0);
-                }
+//                for(int i = 0; i < speakersToDisable.size(); i++){
+//                    sl.l_speakers[speakersToDisable[i]].enabled->setNoCalls(0.0);
+//                }
+
             }
-            initPanner();
+            //initPanner();
+            changeDensity();
         });
 
         mutingLevel.registerChangeCallback([&](float val){
@@ -1975,6 +2081,10 @@ public:
 
         recalcPanning.registerChangeCallback([&](float val){
            initPanner();
+        });
+
+        densityChange.registerChangeCallback([&](float val){
+           changeDensity();
         });
     }
 
@@ -2849,6 +2959,7 @@ public:
                             if(v->enabled.get()){
                                 enabledSources += 1.0f;
                                 v->updatePosition(t);
+                                tryDensityChange();
                                 renderSample(io,v);
                                // VirtualSource *vs = sources[0];
                                 if(loopStart){
@@ -3329,6 +3440,7 @@ public:
             ParameterGUI::drawParameterInt(&densityLevel,"");
             ParameterGUI::drawMenu(&speakerMuting);
             ParameterGUI::drawParameterInt(&mutingLevel,"");
+            ParameterGUI::drawTrigger(&densityChange);
 
             ParameterGUI::drawParameterBool(&drawLabels);
             ParameterGUI::drawParameterBool(&toggleLabelOrientation);
