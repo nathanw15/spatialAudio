@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere
-const int location = 0;
+const int location = 2;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -56,7 +56,7 @@ SearchPaths searchpaths;
 
 vector<string> files;
 vector<string> posUpdateNames{"Static", "Trajectory", "Moving","Sine"};
-vector<string> panningMethodNames{"LBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
+vector<string> panningMethodNames{"VBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
 vector<string> sourceSoundNames{"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"};
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
@@ -2824,7 +2824,7 @@ public:
         event1->addBPF(&vs->centerAzi,0.0,{2.0,1.0,1.0,1.0,0.0,1.0});
         event1->setParameter(&vs->enabled,1.0);
         event1->setMenu(&vs->fileMenu,"shortCount.wav");
-        event1->setMenu(&vs->panMethod,"LBAP");
+        event1->setMenu(&vs->panMethod,"VBAP");
 
         //Add components to event2
         event2->setMenu(&vs->panMethod,"Source Spread");
