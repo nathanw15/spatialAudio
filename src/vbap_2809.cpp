@@ -1,4 +1,4 @@
-#define GAMMA_H_INC_ALL         // define this to include all header files
+﻿#define GAMMA_H_INC_ALL         // define this to include all header files
 #define GAMMA_H_NO_IO           // define this to avoid bringing AudioIO from Gamma
 
 #include "Gamma/Gamma.h"
@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere
-const int location = 2;
+const int location = 0;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -175,6 +175,12 @@ bool showDecorrelation = false;
 bool loopStart = false;
 Vec3d loopStartPos;
 
+//Virtual Sink
+Parameter sinkDepth{"sinkDepth","",0.0,0.0,1.0};
+Parameter sinkWindowPositionMin{"sinkWindowPositionMin","",0.0,0.0,M_2PI};
+Parameter sinkWindowWidth{"sinkWindowWidth","",1.0,0.0,M_2PI};
+
+bool showVirtualSink = false;
 //Parameter numerator("numerator","",1.0,"",-10.0,10.0);// = 1.0;
 //Parameter denom("denom","",1.0,"",-10.0,10.0);
 
@@ -714,6 +720,8 @@ public:
 };
 
 
+
+
 class VirtualSource {
 public:
 
@@ -767,7 +775,8 @@ public:
     Parameter elevation{"elevation","",0.0,"",-1.0*M_PI_2,M_PI_2};
     Parameter oscFreq{"oscFreq","",500.0,"",0.0,2000.0f};
     Parameter angularFreq {"angularFreq"};//Radians per second
-    Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-200.f,200.f};
+//    Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-200.f,200.f};
+    Parameter angFreqCycles {"angFreqCycles", "",1.f,"",-50.f,50.f};
     Parameter samplePlayerRate {"samplePlayerRate","",1.f,"",1.f,1.5f};
     ParameterMenu fileMenu{"fileMenu","",0};
 
@@ -781,7 +790,8 @@ public:
 
     ParameterInt inputChannel{"inputChannel","",0,"",0,INPUT_CHANNELS-1};
 
-    Parameter sourceWidth{"sourceWidth","", M_PI/8.0f, "", 0.0f,M_2PI};
+//    Parameter sourceWidth{"sourceWidth","", M_PI/8.0f, "", 0.0f,M_2PI};
+    Parameter sourceWidth{"sourceWidth","", M_PI/8.0f, "", 0.0f,2.0};
     ParameterMenu panMethod{"panMethod","",0};
 
     int panMethodStore = 0;
@@ -851,8 +861,8 @@ public:
         posOscAmp.displayName("Amp");
         posOscPhase.displayName("Phase");
 
-        aziOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
-        eleOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
+        //aziOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
+        //eleOffset.set( -1.0*M_PI + M_2PI * ((float)rand()) / RAND_MAX);
 
         angularFreq.set(angFreqCycles.get()*M_2PI);
         osc.freq(oscFreq.get());
@@ -1155,8 +1165,13 @@ public:
 
     ParameterBool *enabled;
     Parameter *speakerGain;
+    //Parameter speakerGain{"speakerGain","",1.0,"",0.0,1.0};
+    //speakerGain = new Parameter("speakerGain","",1.0,"",0.0,1.0);
     std::string oscTag;
     std::string deviceChannelString;
+
+    //ParameterBundle speakerBundle{"speakerBundle"};
+
     float aziInRad;
 
     int delay;
@@ -1197,9 +1212,13 @@ public:
 
 
 
-        string gainTag = "speaker" + deviceChannelString + "/speakerGain";
+        string gainTag = "speaker" + deviceChannelString + "gain";
+        cout << gainTag << endl;
         speakerGain = new Parameter(gainTag,"",1.0,"",0.0,1.0);
+        cout << speakerGain->getFullAddress() << endl;
+        //speakerBundle << speakerGain;
         //paramServer.registerParameter(*enabled);
+
     }
 
     void setDelay(int delayInSamps){
@@ -1462,6 +1481,89 @@ void tryDensityChange(){
     //return changingDensity;
 }
 
+float scaleRange(float oldValue, float oldMin, float oldMax, float newMin, float newMax){
+
+    float newValue;
+    float oldRange = oldMax - oldMin;
+
+    if(oldRange == 0){
+         newValue =newMin;
+    }else{
+        float newRange = newMax - newMin;
+        newValue = (((oldValue-oldMin)*newRange) / oldRange) + newMin;
+    }
+
+    return newValue;
+}
+
+float getSpeakerGainSinkScale(float spkCorrectedAzi, float sinkWindowMax){
+    float sinkValue;
+
+   float sinkXValue = scaleRange(spkCorrectedAzi,sinkWindowPositionMin.get(),sinkWindowMax,0.0,1.0);
+
+    sinkValue = (sinkDepth.get()* 0.5 * (cos(M_2PI*sinkXValue) +1 )) + (1-sinkDepth.get());
+    return sinkValue;
+}
+
+void updateSpeakerGains(){
+    vector<SpeakerV*> s = layers[0].l_enabledSpeakers;
+
+    float sinkWindowMax = sinkWindowPositionMin.get() + sinkWindowWidth.get();
+
+
+
+    for(int i = 0; i < s.size(); i++){
+        float sinkScale = 1.0;
+        float speakerAzi = s[i]->aziInRad;
+        //cout << speakerAzi << endl;
+        if(speakerAzi < sinkWindowPositionMin.get()){
+            if(speakerAzi + M_2PI <= sinkWindowMax){
+                //s[i]->speakerGain->set(getSpeakerGainSinkScale(speakerAzi+M_2PI,sinkWindowMax));
+                sinkScale = getSpeakerGainSinkScale(speakerAzi+M_2PI,sinkWindowMax);
+            }
+        }else if(speakerAzi >= sinkWindowPositionMin.get() && speakerAzi <= sinkWindowMax){
+            sinkScale = getSpeakerGainSinkScale(speakerAzi,sinkWindowMax);
+        }else{
+            sinkScale = 1.0;
+        }
+
+        s[i]->speakerGain->set(sinkScale);
+    }
+
+}
+
+//class VirtualSink{
+//public:
+
+//    Parameter sinkDepth{"sinkDepth","",0.0,0.0,1.0};
+//    Parameter sinkWindowPositionMin{"sinkWindowPositionMin","",0.0,0.0,M_2PI};
+//    Parameter sinkWindowWidth{"sinkWindowWidth","",1.0,0.0,M_2PI};
+//    //float windowPositionMax;
+
+//    VirtualSink(){
+
+//        windowPositionMax = windowPositionMin + windowWidth;
+
+//        depth.registerChangeCallback([&](float val){
+//            updateSpeakerGains();
+
+
+
+//                //sourceRamp.rampEndAzimuth = val;
+//        });
+//    }
+
+
+//    float getSinkValue(float inputValue){
+
+//        float sinkValue = (depth* 0.5 * (cos(M_2PI*inputValue) +1 )) + (1-depth);
+//        return sinkValue;
+//    }
+
+
+
+//};
+
 
 
 struct MyApp : public App
@@ -1592,6 +1694,12 @@ public:
         phaseDev.displayName("Phase Deviation");
 
         displaySource.displayName("Source Index");
+
+
+        sinkDepth.displayName("Drain Depth");
+        sinkWindowPositionMin.displayName("Drain Azimuth");
+        sinkWindowWidth.displayName("Drain Width");
+
 
         sampleWise.setHint("hide", 1.0);
         combineAllChannels.setHint("hide", 1.0);
@@ -1950,6 +2058,7 @@ public:
             for(SpeakerLayer& sl: layers){
                 for(int i = 0; i < sl.l_speakers.size(); i++){
                     SpeakerV v = sl.l_speakers[i];
+
                     if(v.deviceChannel != -1){
                         int tempVal = v.deviceChannel % ((int)val+1);
                         if(tempVal == 0){
@@ -2076,7 +2185,8 @@ public:
 
         gainPrinter.registerChangeCallback([&](float val){
 
-            printGains();
+//            printGains();
+            printGains2();
         });
 
         recalcPanning.registerChangeCallback([&](float val){
@@ -2086,6 +2196,20 @@ public:
         densityChange.registerChangeCallback([&](float val){
            changeDensity();
         });
+
+        sinkDepth.registerChangeCallback([&](float val){
+           updateSpeakerGains();
+        });
+
+        sinkWindowPositionMin.registerChangeCallback([&](float val){
+           updateSpeakerGains();
+        });
+
+        sinkWindowWidth.registerChangeCallback([&](float val){
+           updateSpeakerGains();
+        });
+
+
     }
 
 
@@ -2376,7 +2500,7 @@ public:
                         if(speaker1->isPhantom != true){
 
                             if(abs(sample - vs->previousSampleValue) > 0.02){
-                                cout << "Disc... Azi: " << vs->aziInRad << endl;
+                                //cout << "Disc... Azi: " << vs->aziInRad << endl;
                             }
                             vs->previousSampleValue = sample;
                             setOutput(io,speaker1->deviceChannel,io.frame(),sample * gains[0] * xFadeGain * speaker1->speakerGain->get());
@@ -2576,27 +2700,74 @@ public:
     }
 
 
-      void printGains(){
+//      void printGains(){
 
-          float increment = 0.03;
-          vector<int> channels = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17};
+//          float increment = 0.03;
+//          vector<int> channels = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17};
+//          for (int channel: channels){
+//              SpeakerGain* sg = new SpeakerGain;
+//              sg->deviceChannel = channel;
+//              speakerGains.push_back(sg);
+//          }
+//          VirtualSource* vs = sources[0];
+//          float currentAzimuth = 0.0;
+
+//          while (currentAzimuth < M_2PI){
+
+//              vs->aziInRad = currentAzimuth;
+
+//              SpeakerV *speaker1;
+//              SpeakerV *speaker2;
+
+////              Vec3d gains = calcGains(layers[0],vs->aziInRad, speaker1, speaker2);
+//              Vec3d gains = calcGains(layers[0],currentAzimuth, speaker1, speaker2);
+
+//              for(SpeakerGain* sg : speakerGains){
+//                  int sgChan = sg->deviceChannel;
+//                  if(sgChan == speaker1->deviceChannel && speaker1->isPhantom != true){
+//                      sg->gains.push_back(gains[0]*speaker1->speakerGain->get());
+//                  }else if(sgChan == speaker2->deviceChannel && speaker2->isPhantom != true){
+//                      sg->gains.push_back(gains[1]*speaker2->speakerGain->get());
+//                  }else {
+//                      sg->gains.push_back(0.0);
+//                  }
+//              }
+
+//              currentAzimuth += increment;
+
+//          }
+
+//          for(SpeakerGain* sg: speakerGains){
+//              cout << sg->deviceChannel;
+//              for(float g: sg->gains){
+//                  cout << ", " << g;
+//              }
+//              cout << endl;
+//          }
+
+//      }
+
+      void printGains2(){
+
+          float increment = 0.01;
+          vector<int> channels = {0,1,15, 20}; //20 for src Pos
           for (int channel: channels){
               SpeakerGain* sg = new SpeakerGain;
               sg->deviceChannel = channel;
               speakerGains.push_back(sg);
           }
           VirtualSource* vs = sources[0];
-          float currentAzimuth = 0.0;
+          float theta = 0.0;
 
-          while (currentAzimuth < M_2PI){
+          while (theta < M_2PI){
 
-              vs->aziInRad = currentAzimuth;
+              vs->aziInRad = (M_PI/8.0)*sin(2*M_PI*theta);
 
               SpeakerV *speaker1;
               SpeakerV *speaker2;
 
 //              Vec3d gains = calcGains(layers[0],vs->aziInRad, speaker1, speaker2);
-              Vec3d gains = calcGains(layers[0],currentAzimuth, speaker1, speaker2);
+              Vec3d gains = calcGains(layers[0],vs->aziInRad, speaker1, speaker2);
 
               for(SpeakerGain* sg : speakerGains){
                   int sgChan = sg->deviceChannel;
@@ -2604,12 +2775,17 @@ public:
                       sg->gains.push_back(gains[0]*speaker1->speakerGain->get());
                   }else if(sgChan == speaker2->deviceChannel && speaker2->isPhantom != true){
                       sg->gains.push_back(gains[1]*speaker2->speakerGain->get());
-                  }else {
+
+                  }else if(sgChan == 20){
+                      sg->gains.push_back(vs->aziInRad);
+                  }
+
+                  else {
                       sg->gains.push_back(0.0);
                   }
               }
 
-              currentAzimuth += increment;
+              theta += increment;
 
           }
 
@@ -2728,6 +2904,7 @@ public:
             //sl.l_enabledSpeakers.clear();
             for(int i = 0; i < sl.l_enabledSpeakers.size(); i ++){
                 cout<< sl.l_enabledSpeakers[i]->deviceChannel;
+//                parameterServer() << sl.l_enabledSpeakers[i]->speakerBundle;
             }
             cout << endl;
         }
@@ -2740,11 +2917,13 @@ public:
                 if((int) sl.l_speakers[i].deviceChannel > highestChannel){
                     highestChannel = sl.l_speakers[i].deviceChannel;
                 }
+                parameterServer() << sl.l_speakers[i].speakerGain;
 
                 allSpeakers.push_back(&sl.l_speakers[i]); //Add reference to allSpeakers
             }
         }
 
+        parameterServer().sendAllParameters("127.0.0.1", 9011);
         audioIO().channelsOut(highestChannel + 1);
 
         cout << "channelsOutDevice(): " << audioIO().channelsOutDevice() << endl;
@@ -2788,6 +2967,8 @@ public:
 //            }
 //            cout << endl;
 //        }
+
+
 
         decorrelation.configure(audioIO().framesPerBuffer(), routingMap,
                                 true, decorrelationSeed, maxJump.get(),phaseFactor.get());
@@ -3210,6 +3391,22 @@ public:
 
         imguiBeginFrame();
 
+        if(showVirtualSink){
+            ParameterGUI::beginPanel("Virtual Drain");
+            if (ImGui::Button("Close")){
+                showVirtualSink = false;
+
+            }
+            ImGui::Separator();
+
+            ParameterGUI::drawParameter(&sinkDepth);
+            ParameterGUI::drawParameter(&sinkWindowPositionMin);
+            ParameterGUI::drawParameter(&sinkWindowWidth);
+
+
+            ParameterGUI::endPanel();
+        }
+
         if(showLoudspeakerGroups){
             ParameterGUI::beginPanel("Speaker Groups");
             if (ImGui::Button("Close")){
@@ -3389,6 +3586,9 @@ public:
 
                 if (ImGui::MenuItem("Virtual Sources")) {
                     showVirtualSources = true;
+                }
+                if (ImGui::MenuItem("Virtual Sink")) {
+                    showVirtualSink = true;
                 }
                 if (ImGui::MenuItem("Events")){
                     showEvents = true;
