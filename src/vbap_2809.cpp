@@ -38,7 +38,7 @@
 using namespace al;
 using namespace std;
 
-// 0 for 2809, 1 for Allosphere
+// 0 for 2809, 1 for Allosphere, 2 for ring, 3 for 2809 false positions
 const int location = 0;
 
 osc::Send sender(9011, "127.0.0.1");
@@ -134,7 +134,7 @@ Trigger generateRandDecorSeed("generateRandDecorSeed","");
 ParameterBool drawLabels("drawLabels","",1.0);
 ParameterBool toggleLabelOrientation("toggleLabelOrientation","",1.0);
 Parameter restingSpeakerSize("restingSpeakerSize","",0.2,"",0.0,1.0);
-Parameter gainCurveWidth("gainCurveWidth","",1.0,"",0.1,1.0);
+//Parameter gainCurveWidth("gainCurveWidth","",1.0,"",0.1,1.0);
 
 
 ParameterBool stereoOutput("stereoOutput","",0.0);
@@ -149,6 +149,8 @@ ParameterInt displaySource("displaySource","",0,"",0,NUM_SOURCES-1);
 Trigger recalcPanning("recalcPanning","");
 
 Trigger densityChange("densityChange","");
+
+Trigger setDefaults("setDefaults","");
 vector<int> currentLayout;
 vector<int>targetLayout = {1,2,3};
 vector<int> spkInBothLayouts;
@@ -807,8 +809,8 @@ public:
 
     float angFreqCyclesStore = 1.0;
 
-    Parameter numerator{"numerator","",1.0,"",-10.0,10.0};// = 1.0;
-    Parameter denom{"denom","",1.0,"",-10.0,10.0};
+    //Parameter numerator{"numerator","",1.0,"",-10.0,10.0};// = 1.0;
+    //Parameter denom{"denom","",1.0,"",-10.0,10.0};
 
     Trigger aziZeroResetLoop{"aziZeroResetLoop",""};
 
@@ -816,6 +818,7 @@ public:
     float previousSampleValue = 0.0;
 
     VirtualSource(){
+
 
 
         positionUpdateStore = positionUpdate.get();
@@ -887,19 +890,19 @@ public:
         sourceRamp.rampEndAzimuth = rampEndAzimuth.get();
         sourceRamp.rampDuration = rampDuration.get();
 
-        numerator.registerChangeCallback([&](float val){
-            if(denom.get()!= 0.0){
-           angFreqCycles.set((val*(1.0/(float)samplePlayer.period()))/denom.get());
-            }
-        });
+//        numerator.registerChangeCallback([&](float val){
+//            if(denom.get()!= 0.0){
+//           angFreqCycles.set((val*(1.0/(float)samplePlayer.period()))/denom.get());
+//            }
+//        });
 
         panMethod.registerChangeCallback([&](float val){
-            cout << "Pan Method Changed to: " << val << endl;
+            //cout << "Pan Method Changed to: " << val << endl;
             panMethodStore = val;
         });
 
         positionUpdate.registerChangeCallback([&](float val){
-            cout << "Position Method Changed to: " << val << endl;
+            //cout << "Position Method Changed to: " << val << endl;
             positionUpdateStore = val;
         });
 
@@ -910,11 +913,11 @@ public:
 
 
 
-        denom.registerChangeCallback([&](float val){
-            if(val != 0.0){
-           angFreqCycles.set((numerator.get()*(1.0/(float)samplePlayer.period()))/val);
-            }
-        });
+//        denom.registerChangeCallback([&](float val){
+//            if(val != 0.0){
+//           angFreqCycles.set((numerator.get()*(1.0/(float)samplePlayer.period()))/val);
+//            }
+//        });
 
 
         angFreqOffset.registerChangeCallback([&](float val){
@@ -950,7 +953,7 @@ public:
             val += aziOffset*aziOffsetScale;
             //wrapValues(val);
            //aziInRad = val;
-            cout << "centerAzi Called" << endl;
+            //cout << "centerAzi Called" << endl;
             aziInRad.set(val);
         });
 
@@ -959,7 +962,7 @@ public:
             val += centerAzi;
             //wrapValues(val);
            //aziInRad = val;
-            cout << "aziOffset Called" << endl;
+            //cout << "aziOffset Called" << endl;
             aziInRad.set(val);
         });
 
@@ -968,7 +971,7 @@ public:
            val += centerAzi;
            //wrapValues(val);
           //aziInRad = val;
-           cout << "aziOffsetScale Called" << endl;
+           //cout << "aziOffsetScale Called" << endl;
            aziInRad.set(val);
         });
 
@@ -1047,7 +1050,8 @@ public:
         });
 
         vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase
-                 << numerator << denom << aziZeroResetLoop;
+                 << draw <<  aziZeroResetLoop;
+
 
     }
 
@@ -1435,14 +1439,14 @@ void changeDensity(){
     }
 
     if(spkInBothLayouts.size() > 0){
-        cout << "spkInBothLayouts: ";
-        for(int i = 0; i < spkInBothLayouts.size();i++){
-            cout << " " << spkInBothLayouts[i];
-        }
-        cout << endl;
+//        cout << "spkInBothLayouts: ";
+//        for(int i = 0; i < spkInBothLayouts.size();i++){
+//            cout << " " << spkInBothLayouts[i];
+//        }
+//        cout << endl;
         changingDensity.set(1.0);
     }else{
-        cout << "No common speakers in current and target layouts" << endl;
+        cout << "No common speakers in current and target layouts..." << endl;
     }
 
 
@@ -1636,6 +1640,9 @@ public:
         parameterServer() << setAllGain << setPlayerPhase << playerRateMultiplier
                           << setAllAzimuth << setAllAzimuthOffsetScale << setAllElevation
                           << setAllEleOffsetScale;
+
+
+        parameterServer() << setDefaults;
 
        // htmlServer << parameterServer();
 
@@ -2207,6 +2214,51 @@ public:
 
         sinkWindowWidth.registerChangeCallback([&](float val){
            updateSpeakerGains();
+        });
+
+        setDefaults.registerChangeCallback([&](float val){
+
+            for(VirtualSource *v: sources){
+
+                v->posOscPhase.set(0.0);
+                v->posOscFreq.set(1.0);
+                v->posOscAmp.set(1.0);
+
+                v->oscFreq.set(500.);
+
+
+
+                v->centerAzi.set(0.0);
+                v->aziOffset.set(0.0);
+                v->aziOffsetScale.set(0.0);
+
+                v->enabled.set(0.0);
+                v->mute.set(0.0);
+                v->decorrelateSrc.set(0.0);
+                v->invert.set(0.0);
+
+                v->draw.set(0.0);
+
+                v->sourceGain.set(0.5);
+                v->angFreqCycles.set(1.0);
+                v->fileMenu.set(0);
+                v->sourceSound.set(0);
+
+                v->sourceWidth.set(M_PI/8.0f);
+                v->panMethod.set(0);
+                v->positionUpdate.set(0);
+
+                v->angFreqOffset.set(0.0);
+                //v->angFreqCyclesMult.set(1);
+            }
+
+            //Loudspeakers
+
+            speakerDensity.set(0);
+            densityLevel.set(0);
+            speakerMuting.set(0);
+
+
         });
 
 
@@ -2896,6 +2948,41 @@ public:
 
         }
 
+        else if(location == 3){
+
+            SpeakerLayer speakerLayer;
+            speakerLayer.elevation = 0.0;
+
+            //for using phantom channels
+            //            float startingAngle = 170.0f;
+            //            float angleInc = 11.0f;
+
+            float startingAngle = 180.0f;
+            float angleInc = 11.25f;
+
+            float ang;
+            for (int i = 0; i < 32; i++){
+                int delay = rand() % static_cast<int>(MAX_DELAY + 1);
+
+
+                ang = rand() * 359.0f;
+                speakerLayer.l_speakers.push_back(SpeakerV(i,ang,0.0,0,5.0,0,delay));
+            }
+
+            //-1 for phantom channels (can remove isPhantom and just check -1)
+            //            SpeakerV s(-1, startingAngle+angleInc,0.0,0,5.0,0,0);
+            //            s.isPhantom = true;
+            //            speakerLayer.l_speakers.push_back(s);
+
+            //            SpeakerV p(-1, ang - angleInc,0.0,0,5.0,0,0);
+            //            p.isPhantom = true;
+            //            speakerLayer.l_speakers.push_back(p);
+
+            layers.push_back(speakerLayer);
+
+
+        }
+
 
         initPanner();
 
@@ -2925,6 +3012,8 @@ public:
 
         parameterServer().sendAllParameters("127.0.0.1", 9011);
         audioIO().channelsOut(highestChannel + 1);
+
+
 
         cout << "channelsOutDevice(): " << audioIO().channelsOutDevice() << endl;
 
@@ -3645,7 +3734,7 @@ public:
             ParameterGUI::drawParameterBool(&drawLabels);
             ParameterGUI::drawParameterBool(&toggleLabelOrientation);
             ParameterGUI::drawParameter(&restingSpeakerSize);
-            ParameterGUI::drawParameter(&gainCurveWidth);
+            //ParameterGUI::drawParameter(&gainCurveWidth);
             for(SpeakerLayer sl: layers){
                 for(SpeakerV sv: sl.l_speakers){
                     ParameterGUI::drawParameterBool(sv.enabled);
@@ -3704,9 +3793,9 @@ public:
                 ParameterGUI::drawParameter(&src->angularFreq);
                 ParameterGUI::drawParameter(&src->angFreqCycles);
                 ParameterGUI::drawParameter(&src->angFreqOffset);
-                ParameterGUI::drawParameterInt(&src->angFreqCyclesMult,"");
-                ParameterGUI::drawParameter(&src->numerator);
-                ParameterGUI::drawParameter(&src->denom);
+                //ParameterGUI::drawParameterInt(&src->angFreqCyclesMult,"");
+//                ParameterGUI::drawParameter(&src->numerator);
+//                ParameterGUI::drawParameter(&src->denom);
                 ParameterGUI::drawTrigger(&src->loopLengthToRotFreq);
                 ParameterGUI::drawTrigger(&src->aziZeroResetLoop);
                 ImGui::TreePop();
