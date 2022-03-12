@@ -1642,7 +1642,9 @@ public:
                           << setAllEleOffsetScale;
 
 
-        parameterServer() << setDefaults;
+
+
+        parameterServer() << setDefaults << sinkWindowWidth << sinkDepth << sinkWindowPositionMin;
 
        // htmlServer << parameterServer();
 
