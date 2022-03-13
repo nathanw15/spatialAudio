@@ -56,7 +56,7 @@ SearchPaths searchpaths;
 
 vector<string> files;
 vector<string> posUpdateNames{"Static", "Trajectory", "Moving","Sine"};
-vector<string> panningMethodNames{"VBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade"};
+vector<string> panningMethodNames{"VBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade","Linear"};
 vector<string> sourceSoundNames{"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"};
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
@@ -817,6 +817,8 @@ public:
     //For finding the source of clicks.
     float previousSampleValue = 0.0;
 
+    ParameterInt loadWAVByIdx{"loadWAVByIdx","",0,"",0,100};
+
     VirtualSource(){
 
 
@@ -930,7 +932,7 @@ public:
         });
 
         aziZeroResetLoop.registerChangeCallback([&](float val){
-            cout << "aziZeroResetLoop Called" << endl;
+            //cout << "aziZeroResetLoop Called" << endl;
             aziInRad.set(0.0);
             samplePlayer.reset();
         });
@@ -1049,8 +1051,13 @@ public:
                 sourceRamp.rampDuration = val;
         });
 
+
+        loadWAVByIdx.registerChangeCallback([&](float val){
+                samplePlayer.load("src/sounds/extractedCurves.wav");
+                cout << "loadWAVByIdx" << endl;
+        });
         vsBundle << enabled << mute << decorrelateSrc << sourceGain << panMethod << positionUpdate << sourceSound <<  fileMenu  << samplePlayerRate << soundFileStartPhase << soundFileDuration << centerAzi << aziOffset << aziOffsetScale << centerEle << eleOffset << eleOffsetScale << angularFreq << angFreqCycles << angFreqOffset << angFreqCyclesMult << loopLengthToRotFreq << oscFreq  << scaleSrcWidth << sourceWidth << fadeDuration << posOscFreq << posOscAmp << posOscPhase
-                 << draw <<  aziZeroResetLoop;
+                 << draw <<  aziZeroResetLoop << loadWAVByIdx;
 
 
     }
@@ -1217,9 +1224,9 @@ public:
 
 
         string gainTag = "speaker" + deviceChannelString + "gain";
-        cout << gainTag << endl;
+        //cout << gainTag << endl;
         speakerGain = new Parameter(gainTag,"",1.0,"",0.0,1.0);
-        cout << speakerGain->getFullAddress() << endl;
+        //cout << speakerGain->getFullAddress() << endl;
         //speakerBundle << speakerGain;
         //paramServer.registerParameter(*enabled);
 
@@ -1705,9 +1712,9 @@ public:
         displaySource.displayName("Source Index");
 
 
-        sinkDepth.displayName("Drain Depth");
-        sinkWindowPositionMin.displayName("Drain Azimuth");
-        sinkWindowWidth.displayName("Drain Width");
+        sinkDepth.displayName("Depth");
+        sinkWindowPositionMin.displayName("Azimuth");
+        sinkWindowWidth.displayName("Width");
 
 
         sampleWise.setHint("hide", 1.0);
@@ -2064,21 +2071,23 @@ public:
         });
 
         speakerDensity.registerChangeCallback([&](float val){
-            for(SpeakerLayer& sl: layers){
-                for(int i = 0; i < sl.l_speakers.size(); i++){
-                    SpeakerV v = sl.l_speakers[i];
+            if(val >= 0){ //don't allow values less than zero
+                for(SpeakerLayer& sl: layers){
+                    for(int i = 0; i < sl.l_speakers.size(); i++){
+                        SpeakerV v = sl.l_speakers[i];
 
-                    if(v.deviceChannel != -1){
-                        int tempVal = v.deviceChannel % ((int)val+1);
-                        if(tempVal == 0){
-                            v.enabled->set(1.0f);
-                        }else {
-                            v.enabled->set(0.0f);
+                        if(v.deviceChannel != -1){
+                            int tempVal = v.deviceChannel % ((int)val+1);
+                            if(tempVal == 0){
+                                v.enabled->set(1.0f);
+                            }else {
+                                v.enabled->set(0.0f);
+                            }
                         }
                     }
                 }
+                initPanner();
             }
-            initPanner();
         });
 
 
@@ -2241,7 +2250,7 @@ public:
 
                 v->draw.set(0.0);
 
-                v->sourceGain.set(0.5);
+                v->sourceGain.set(0.0);
                 v->angFreqCycles.set(1.0);
                 v->fileMenu.set(0);
                 v->sourceSound.set(0);
@@ -2414,6 +2423,19 @@ public:
         if(distanceToSpeaker <= spkSkirtWidth/2.0f){
             float p = ((2.0f*distanceToSpeaker)/(spkSkirtWidth/2.0f))-1.0f;
             gain = cos((M_PI*(p+1))/4.0f);
+            return gain;
+        }else{
+            return 0.0f;
+        }
+    }
+
+    float calcLinearGains(float srcAzi, float srcElev, float spkSkirtWidth, float spkAzi, float spkElev){
+        float gain = 0.0f;
+        float distanceToSpeaker = getAbsAngleDiff(srcAzi, spkAzi) + getAbsAngleDiff(srcElev, spkElev);
+        if(distanceToSpeaker <= spkSkirtWidth/2.0f){
+            float p = ((2.0f*distanceToSpeaker)/(spkSkirtWidth/2.0f))-1.0f;
+//            gain = cos((M_PI*(p+1))/4.0f);
+            gain = M_PI*(p-1)/4.0f;
             return gain;
         }else{
             return 0.0f;
@@ -2750,6 +2772,56 @@ public:
 //                setOutput(io,vs->prevSnapChan,io.frame(),sample*prevGain * xFadeGain);
 //                setOutput(io,vs->currentSnapChan,io.frame(),sample*currentGain * xFadeGain);
 //            }
+        }else if(vs->panMethodStore == 5){ //Linear
+
+            std::vector<float> gains(highestChannel+1,0.0);
+            float gainsAccum = 0.0;
+            float sample = 0.0f;
+            if(!vs->decorrelateSrc.get()){
+                sample = vs->getSample(io, inputChannel);
+            }
+
+            for(SpeakerLayer& sl: layers){
+                for (int i = 0; i < sl.l_speakers.size(); i++){
+                    if(!sl.l_speakers[i].isPhantom && sl.l_speakers[i].enabled->get()){
+                        int speakerChannel = sl.l_speakers[i].deviceChannel;
+                        float gain = calcLinearGains(vs->aziInRad, vs->elevation,vs->sourceWidth,sl.l_speakers[i].aziInRad, sl.elevation);
+
+                        if(vs->panMethodStore == 2 && gain > 0.0){
+                            gain = 1.0;
+                        }
+
+                        //TODO: speakerGain not used here
+                        gains[speakerChannel] = gain;
+                        gainsAccum += gain*gain;
+                    }
+                }
+            }
+
+            float gainScaleFactor = 1.0;
+            if(vs->scaleSrcWidth.get()){
+                if(!gainsAccum == 0.0){
+                    gainScaleFactor = sqrt(gainsAccum);
+                }
+            }
+
+            for(SpeakerLayer& sl: layers){
+                for (int i = 0; i < sl.l_speakers.size(); i++){
+                    if(!sl.l_speakers[i].isPhantom && sl.l_speakers[i].enabled->get()){
+                        int speakerChannel = sl.l_speakers[i].deviceChannel;
+                        float spkGain = sl.l_speakers[i].speakerGain->get();
+                        if(vs->decorrelateSrc.get()){
+                            sample = decorrelation.getOutputBuffer(sl.l_speakers[i].decorrelationOutputIdx)[io.frame()];
+                            setOutput(io,speakerChannel,io.frame(),sample * (gains[speakerChannel] / gainScaleFactor) * xFadeGain * spkGain);
+
+                        }else{
+                            setOutput(io,speakerChannel,io.frame(),sample * (gains[speakerChannel] / gainScaleFactor) * xFadeGain * spkGain);
+                        }
+                    }
+                }
+            }
+
+
         }
     }
 
