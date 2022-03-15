@@ -56,7 +56,7 @@ SearchPaths searchpaths;
 
 vector<string> files;
 vector<string> posUpdateNames{"Static", "Trajectory", "Moving","Sine"};
-vector<string> panningMethodNames{"VBAP","Source Spread","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade","Linear"};
+vector<string> panningMethodNames{"VBAP","Gain Curve Width","Snap to Source Width", "Snap To Nearest Speaker","Snap With Fade","Linear"};
 vector<string> sourceSoundNames{"SoundFile","Noise","Sine","Impulse","Saw", "Square","AudioIn","Window Phase"};
 
 Parameter maxDelay("maxDelay","",0.0,"",0.0,1.0);
@@ -842,7 +842,8 @@ public:
         soundFileStartPhase.displayName("Start Phase");
         soundFileDuration.displayName("Duration");
 
-        sourceWidth.displayName("Spread");
+        sourceWidth.displayName("Gain Curve Width");
+//        sourceWidth.displayName("Spread");
         scaleSrcWidth.displayName("Equal Loudness");
 
         centerAzi.displayName("Azimuth");
@@ -3891,7 +3892,7 @@ public:
             }
 
             ImGui::Separator();
-            if(ImGui::TreeNode("Source Spread")){
+            if(ImGui::TreeNode("Gain Curve Width")){
                 ParameterGUI::drawParameter(&src->sourceWidth);
                 ParameterGUI::drawParameterBool(&src->scaleSrcWidth);
                 ImGui::TreePop();
