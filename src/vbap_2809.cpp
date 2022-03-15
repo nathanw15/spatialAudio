@@ -2253,7 +2253,7 @@ public:
                 v->sourceGain.set(0.0);
                 v->angFreqCycles.set(1.0);
                 v->fileMenu.set(0);
-                v->sourceSound.set(0);
+                v->sourceSound.set(2);
 
                 v->sourceWidth.set(M_PI/8.0f);
                 v->panMethod.set(0);
