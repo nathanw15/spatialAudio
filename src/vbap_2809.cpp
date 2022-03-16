@@ -1639,7 +1639,7 @@ public:
 
         parameterServer() << soundOn << resetPosOscPhase
                           <<  masterGain << setAllDecorrelate
-                          << decorrelationMethod << speakerDensity << densityLevel << drawLabels
+                          << decorrelationMethod << speakerDensity << densityLevel << speakerMuting << drawLabels
                           << xFadeCh1_2 << xFadeValue << generateRandDecorSeed
                           << maxJump << phaseFactor << deltaFreq << maxFreqDev
                           << maxTau << startPhase << phaseDev;
