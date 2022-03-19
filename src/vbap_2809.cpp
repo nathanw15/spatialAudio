@@ -39,7 +39,7 @@ using namespace al;
 using namespace std;
 
 // 0 for 2809, 1 for Allosphere, 2 for ring, 3 for 2809 false positions
-const int location = 0;
+const int location = 1;
 
 osc::Send sender(9011, "127.0.0.1");
 //ParameterServer paramServer("127.0.0.1",8080);
@@ -2108,6 +2108,7 @@ public:
                 if(val== 0.0){
                     targetLayout.clear();
                     targetLayout = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31};
+
                     break;
                 }else if(val == 1.0){
                     //speakersToDisable = {1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31};
